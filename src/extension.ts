@@ -8,6 +8,9 @@ import * as vscode from 'vscode';
 import { ConfigurationManager, LLMApiClient, ApiErrorHandler } from './api';
 import { UIDialogs } from './ui';
 import { CodeAnalyzer } from './utils';
+import { PythonASTAnalyzer } from './analysis';
+import { AgentFlowController, Stage1Response, UserConfirmationResult } from './agents';
+import { TestGenerationController } from './generation';
 
 /**
  * Extension activation entry point
@@ -43,6 +46,8 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 				return;
 			}
 
+			const filePath = editor.document.uri.fsPath;
+
 			// Extract function information from current selection or cursor position
 			const functionInfo = CodeAnalyzer.extractFunctionInfo(editor);
 			if (!functionInfo) {
@@ -61,12 +66,6 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 				);
 				return;
 			}
-
-			// Show function info for confirmation (Phase 1 - just display info)
-			await UIDialogs.showSuccess(
-				`Found function: ${functionInfo.name}\nParameters: ${functionInfo.parameters.join(', ') || 'none'}\n\nAPI integration is ready! Test generation will be implemented in Phase 2.`,
-				['OK']
-			);
 
 			// Get user's test description
 			const testDescription = await UIDialogs.showTestDescriptionInput();
@@ -97,32 +96,103 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 				return;
 			}
 
-			// Initialize API client
+			// Initialize controllers
 			const provider = configManager.getApiProvider();
 			const modelName = configManager.getModelName();
-			const apiClient = new LLMApiClient(apiKey, provider, modelName);
+			const agentController = new AgentFlowController(apiKey, provider, modelName);
+			const testGenerator = new TestGenerationController();
+			const astAnalyzer = new PythonASTAnalyzer();
 
-			// Phase 1: Just test the API connection with a simple echo
-			await UIDialogs.withProgress('Testing API connection...', async () => {
+			await UIDialogs.withProgress('Generating tests...', async () => {
 				try {
-					const response = await apiClient.callWithRetry([
-						{
-							role: 'system',
-							content: 'You are a helpful assistant. Respond with "API connection successful!"'
-						},
-						{
-							role: 'user',
-							content: 'Hello'
-						}
-					]);
+					// Phase 2: Analyze function with Python AST
+					const analysisResult = await astAnalyzer.buildFunctionContext(
+						filePath,
+						functionInfo.name
+					);
 
-					const usage = apiClient.getTokenUsage();
+					if (!analysisResult.success) {
+						throw new Error(`Failed to analyze function: ${analysisResult.error}`);
+					}
+
+					const functionContext = analysisResult.data;
+
+					// Phase 3: Run two-stage agent pipeline
+					const confirmationHandler = async (stage1Response: Stage1Response): Promise<UserConfirmationResult> => {
+						// Show scenarios to user for confirmation
+						const scenarios = [
+							...stage1Response.identified_scenarios.map(s => `✓ ${s.scenario}`),
+							...stage1Response.suggested_additional_scenarios.map(s => `? ${s.scenario}`)
+						].join('\n');
+
+						const message = `${stage1Response.confirmation_question}\n\nProposed test scenarios:\n${scenarios}\n\nProceed with generation?`;
+
+						const action = await vscode.window.showInformationMessage(
+							message,
+							{ modal: true },
+							'Yes',
+							'Add More',
+							'Cancel'
+						);
+
+						if (action === 'Yes') {
+							return { confirmed: true, cancelled: false };
+						} else if (action === 'Add More') {
+							const additional = await vscode.window.showInputBox({
+								prompt: 'Enter additional test scenarios (comma-separated)',
+								placeHolder: 'e.g., test with empty input, test with special characters'
+							});
+
+							return {
+								confirmed: true,
+								cancelled: false,
+								additionalScenarios: additional || undefined
+							};
+						} else {
+							return { confirmed: false, cancelled: true };
+						}
+					};
+
+					const pipelineResult = await agentController.runFullPipeline(
+						functionContext,
+						testDescription,
+						confirmationHandler
+					);
+
+					if (!pipelineResult.success) {
+						throw new Error(pipelineResult.error || 'Pipeline execution failed');
+					}
+
+					if (!pipelineResult.stage2Response) {
+						throw new Error('No test code generated');
+					}
+
+					// Phase 4: Generate and insert test code
+					const generationResult = await testGenerator.generateAndInsertTests(
+						pipelineResult.stage2Response,
+						functionContext,
+						filePath
+					);
+
+					if (!generationResult.success) {
+						throw new Error(generationResult.error || 'Test generation failed');
+					}
+
+					// Show success message
+					const warningsText = generationResult.warnings.length > 0
+						? `\n\nWarnings:\n${generationResult.warnings.join('\n')}`
+						: '';
+
 					await UIDialogs.showSuccess(
-						`✓ API Connection Successful!\n\nModel: ${response.model}\nTokens used: ${usage.totalTokens}\nEstimated cost: $${usage.totalCost.toFixed(4)}\n\n` +
-						`Function: ${functionInfo.name}\nDescription: ${testDescription}\n\n` +
-						`Full test generation will be implemented in Phase 2.`,
+						`✓ Test generated successfully!\n\n` +
+						`File: ${generationResult.testFilePath}\n` +
+						`Tests: ${generationResult.parsedCode.testMethods.length}\n` +
+						`Tokens used: ${pipelineResult.totalTokens}\n` +
+						`Cost: $${pipelineResult.estimatedCost.toFixed(4)}` +
+						warningsText,
 						['OK']
 					);
+
 				} catch (error) {
 					const errorHandler = new ApiErrorHandler();
 					const errorResult = errorHandler.handleError(error);
