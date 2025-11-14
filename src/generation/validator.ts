@@ -6,8 +6,11 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { spawn, exec } from 'child_process';
+import { exec } from 'child_process';
 import { promisify } from 'util';
+import Parser from 'tree-sitter';
+import type { SyntaxNode, Language } from 'tree-sitter';
+import Python from 'tree-sitter-python';
 import {
   ValidationResult,
   SyntaxError as SyntaxErrorType,
@@ -15,6 +18,9 @@ import {
 } from './types';
 
 const execAsync = promisify(exec);
+
+let pythonParser: Parser | undefined;
+const pythonLanguage = Python as unknown as Language;
 
 /**
  * Validate Python syntax of test code
@@ -26,58 +32,25 @@ const execAsync = promisify(exec);
  */
 export async function validatePythonSyntax(code: string): Promise<ValidationResult> {
   try {
-    const pythonScript = path.join(__dirname, '../../python/syntax_validator.py');
-    const input = JSON.stringify({ code });
+    const parser = getPythonParser();
+    const tree = parser.parse(code);
 
-    // Use spawn to pipe input to stdin
-    const result = await new Promise<ValidationResult>((resolve, reject) => {
-      const pythonProcess = spawn('python3', [pythonScript]);
+  if (!tree.rootNode.hasError) {
+      return {
+        isValid: true,
+        errors: [],
+        warnings: []
+      };
+    }
 
-      let stdout = '';
-      let stderr = '';
+    const errors = collectSyntaxErrors(tree.rootNode, code);
 
-      pythonProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      pythonProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      pythonProcess.on('close', (code) => {
-        if (stderr) {
-          console.error('Validator stderr:', stderr);
-        }
-
-        if (code !== 0) {
-          reject(new Error(`Validator exited with code ${code}: ${stderr}`));
-          return;
-        }
-
-        try {
-          const parsedResult = JSON.parse(stdout);
-          resolve({
-            isValid: parsedResult.is_valid,
-            errors: parsedResult.errors || [],
-            warnings: parsedResult.warnings || []
-          });
-        } catch (parseError) {
-          reject(new Error(`Failed to parse validator output: ${parseError}`));
-        }
-      });
-
-      pythonProcess.on('error', (error) => {
-        reject(error);
-      });
-
-      // Write input to stdin
-      pythonProcess.stdin.write(input);
-      pythonProcess.stdin.end();
-    });
-
-    return result;
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings: []
+    };
   } catch (error) {
-    // If validation script fails, return a basic error
     return {
       isValid: false,
       errors: [{
@@ -88,6 +61,78 @@ export async function validatePythonSyntax(code: string): Promise<ValidationResu
       warnings: []
     };
   }
+}
+
+function getPythonParser(): Parser {
+  if (!pythonParser) {
+    pythonParser = new Parser();
+    pythonParser.setLanguage(pythonLanguage);
+  }
+
+  return pythonParser;
+}
+
+function collectSyntaxErrors(root: SyntaxNode, code: string): SyntaxErrorType[] {
+  const errors: SyntaxErrorType[] = [];
+  const seen = new Set<string>();
+  const lines = code.split(/\r?\n/);
+  const stack: SyntaxNode[] = [root];
+
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) {
+      continue;
+    }
+
+  const key = `${node.startIndex}:${node.endIndex}:${node.type}:${node.isMissing}`;
+  const isProblematic = node.type === 'ERROR' || node.isMissing;
+
+    if (isProblematic && !seen.has(key)) {
+      seen.add(key);
+      errors.push(formatSyntaxError(node, lines));
+    }
+
+    for (const child of node.children) {
+      stack.push(child);
+    }
+  }
+
+  return errors;
+}
+
+function formatSyntaxError(node: SyntaxNode, lines: string[]): SyntaxErrorType {
+  const lineIndex = node.startPosition.row;
+  const columnIndex = node.startPosition.column;
+  const lineText = lines[lineIndex] ?? '';
+
+  let message: string;
+  if (node.isMissing) {
+    message = `Missing ${node.type.replace(/_/g, ' ')} token`;
+  } else {
+    const snippet = sanitizeSnippet(node.text);
+    message = snippet
+      ? `Unexpected syntax near "${snippet}"`
+      : 'Unexpected syntax';
+  }
+
+  return {
+    line: lineIndex + 1,
+    column: columnIndex + 1,
+    message,
+    severity: 'error',
+    context: lineText
+  };
+}
+
+function sanitizeSnippet(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.length > 40
+    ? `${normalized.slice(0, 37)}...`
+    : normalized;
 }
 
 /**

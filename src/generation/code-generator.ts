@@ -2,11 +2,10 @@
  * Code Generator Module
  *
  * Handles parsing of LLM-generated test code, import generation,
- * code formatting, and test file template creation.
+ * and test file template creation.
  */
 
 import * as path from 'path';
-import { spawn } from 'child_process';
 import {
   ParsedTestCode,
   TestMethod,
@@ -384,105 +383,23 @@ function extractModuleName(importStatement: string): string {
 /**
  * Format test code using Python formatter
  *
- * Calls black or autopep8 via subprocess
+ * NOTE: Code formatting has been disabled to reduce external dependencies.
+ * This function now simply returns the code as-is without formatting.
  *
  * @param code - Python test code to format
- * @param options - Formatting options
+ * @param options - Formatting options (ignored)
  * @returns Formatted code result
  */
 export async function formatTestCode(
   code: string,
   options: FormatOptions = {}
 ): Promise<FormatResult> {
-  const {
-    formatter = 'black',
-    lineLength = 88,
-    skipOnError = true
-  } = options;
-
-  if (formatter === 'none') {
-    return {
-      success: true,
-      formattedCode: code,
-      originalCode: code
-    };
-  }
-
-  try {
-    const pythonScript = path.join(__dirname, '../../python/code_formatter.py');
-    const input = JSON.stringify({
-      code,
-      formatter,
-      line_length: lineLength,
-      skip_on_error: skipOnError
-    });
-
-    // Use spawn to pipe input to stdin
-    const result = await new Promise<FormatResult>((resolve, reject) => {
-      const pythonProcess = spawn('python3', [pythonScript]);
-
-      let stdout = '';
-      let stderr = '';
-
-      pythonProcess.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      pythonProcess.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      pythonProcess.on('close', (code) => {
-        if (stderr) {
-          console.error('Formatter stderr:', stderr);
-        }
-
-        if (code !== 0) {
-          reject(new Error(`Formatter exited with code ${code}: ${stderr}`));
-          return;
-        }
-
-        try {
-          const parsedResult = JSON.parse(stdout);
-          resolve({
-            success: parsedResult.success,
-            formattedCode: parsedResult.formatted_code,
-            originalCode: parsedResult.original_code,
-            error: parsedResult.error,
-            warning: parsedResult.warning
-          });
-        } catch (parseError) {
-          reject(new Error(`Failed to parse formatter output: ${parseError}`));
-        }
-      });
-
-      pythonProcess.on('error', (error) => {
-        reject(error);
-      });
-
-      // Write input to stdin
-      pythonProcess.stdin.write(input);
-      pythonProcess.stdin.end();
-    });
-
-    return result;
-  } catch (error) {
-    if (skipOnError) {
-      return {
-        success: true,
-        formattedCode: code,
-        originalCode: code,
-        warning: `Formatting failed: ${error instanceof Error ? error.message : String(error)}`
-      };
-    } else {
-      return {
-        success: false,
-        formattedCode: code,
-        originalCode: code,
-        error: `Formatting failed: ${error instanceof Error ? error.message : String(error)}`
-      };
-    }
-  }
+  // Code formatting disabled - return original code without modification
+  return {
+    success: true,
+    formattedCode: code,
+    originalCode: code
+  };
 }
 
 /**

@@ -40,6 +40,30 @@ function loadJsonFile<T>(filePath: string): T {
 }
 
 /**
+ * Resolve prompts directory across bundled and source layouts
+ */
+function resolvePromptsDir(customDir?: string): string {
+  if (customDir) {
+    return customDir;
+  }
+
+  const candidates = [
+    path.resolve(__dirname, '../../prompts'),
+    path.resolve(__dirname, '../prompts'),
+    path.resolve(__dirname, '../../../prompts'),
+    path.resolve(process.cwd(), 'prompts')
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Unable to locate prompts directory. Checked: ${candidates.join(', ')}`);
+}
+
+/**
  * Format function context for prompt display
  */
 function formatFunctionContext(context: FunctionContext): string {
@@ -195,7 +219,7 @@ export class Stage1PromptBuilder {
   private examples: Stage1Example[];
 
   constructor(promptsDir?: string) {
-    const baseDir = promptsDir || path.join(__dirname, '../../prompts');
+  const baseDir = resolvePromptsDir(promptsDir);
 
     // Load system prompt
     this.systemPrompt = loadTextFile(path.join(baseDir, 'stage1_system_prompt.txt'));
@@ -285,7 +309,7 @@ export class Stage2PromptBuilder {
   private examples: Stage2Example[];
 
   constructor(promptsDir?: string) {
-    const baseDir = promptsDir || path.join(__dirname, '../../prompts');
+  const baseDir = resolvePromptsDir(promptsDir);
 
     // Load system prompt
     this.systemPrompt = loadTextFile(path.join(baseDir, 'stage2_system_prompt.txt'));
@@ -403,7 +427,7 @@ export class SupplementPromptBuilder {
   private systemPrompt: string;
 
   constructor(promptsDir?: string) {
-    const dir = promptsDir || path.join(__dirname, '../../prompts');
+  const dir = resolvePromptsDir(promptsDir);
     const systemPromptPath = path.join(dir, 'supplement_system_prompt.txt');
     this.systemPrompt = loadTextFile(systemPromptPath);
   }

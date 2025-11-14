@@ -258,6 +258,8 @@ class PythonASTAnalyzer:
         complexity = 1  # Base complexity
 
         # Walk through all nodes in function body
+        match_node_type = getattr(ast, 'Match', None)
+
         for node in ast.walk(func_node):
             # Detect branches
             if isinstance(node, ast.If):
@@ -269,7 +271,7 @@ class PythonASTAnalyzer:
                 })
                 complexity += 1
 
-            elif isinstance(node, ast.Match):
+            elif match_node_type and isinstance(node, match_node_type):
                 branches.append({
                     'type': 'match',
                     'condition': ast.unparse(node.subject),

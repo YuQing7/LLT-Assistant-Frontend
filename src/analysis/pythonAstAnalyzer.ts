@@ -5,6 +5,7 @@
  */
 
 import { spawn } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import { FunctionContext, AnalyzerError } from './types';
 
@@ -22,9 +23,7 @@ export class PythonASTAnalyzer {
   private pythonScriptPath: string;
 
   constructor() {
-    // Get the path to the Python script
-    // Assumes the script is in the 'python' directory at project root
-    this.pythonScriptPath = path.join(__dirname, '..', '..', 'python', 'ast_analyzer.py');
+    this.pythonScriptPath = resolvePythonScriptPath();
   }
 
   /**
@@ -210,4 +209,24 @@ export class PythonASTAnalyzer {
       });
     });
   }
+}
+
+/**
+ * Resolve the on-disk location of the Python analyzer script.
+ */
+function resolvePythonScriptPath(): string {
+  const candidates = [
+    path.resolve(__dirname, '../python/ast_analyzer.py'),
+    path.resolve(__dirname, '../../python/ast_analyzer.py'),
+    path.resolve(__dirname, '../../../python/ast_analyzer.py'),
+    path.resolve(process.cwd(), 'python/ast_analyzer.py')
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`Unable to locate python/ast_analyzer.py. Checked: ${candidates.join(', ')}`);
 }

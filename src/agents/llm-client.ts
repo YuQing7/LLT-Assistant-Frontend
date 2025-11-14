@@ -8,6 +8,7 @@
 import { LLMApiClient } from '../api/client';
 import { ChatMessage, ApiProvider, LLMResponse } from '../types';
 import { AgentLLMOptions, Stage1Response, Stage2Response } from './types';
+import { writeDebugSnapshot } from '../utils/debugLogger';
 
 /**
  * LLM Client for Agents
@@ -116,13 +117,29 @@ export class AgentLLMClient {
     userPrompt: string,
     options?: AgentLLMOptions
   ): Promise<Stage1Response> {
+    return this.callStage1Internal(systemPrompt, userPrompt, options, true);
+  }
+
+  private async callStage1Internal(
+    systemPrompt: string,
+    userPrompt: string,
+    options: AgentLLMOptions | undefined,
+    allowParseRetry: boolean
+  ): Promise<Stage1Response> {
     // Force JSON response format for Stage 1
     const stage1Options: AgentLLMOptions = {
       ...options,
       responseFormat: 'json_object',
       temperature: options?.temperature ?? 0.3,
-      maxTokens: options?.maxTokens ?? 2000
+      maxTokens: options?.maxTokens ?? 2000000
     };
+
+    writeDebugSnapshot('stage1', 'request', {
+      attempt: 'primary',
+      systemPrompt,
+      userPrompt,
+      options: stage1Options
+    });
 
     const responseContent = await this.callWithRetry(
       systemPrompt,
@@ -130,13 +147,76 @@ export class AgentLLMClient {
       stage1Options
     );
 
+    console.log('[LLT Assistant] Stage1 raw response:', responseContent);
+    writeDebugSnapshot('stage1', 'response', {
+      attempt: 'primary',
+      responseContent
+    });
+
     // Parse JSON response
     try {
       const parsed = this.parseStage1Response(responseContent);
       this.validateStage1Response(parsed);
+      writeDebugSnapshot('stage1', 'parsed', {
+        attempt: 'primary',
+        parsed
+      });
       return parsed;
     } catch (error) {
-      throw new Error(`Failed to parse Stage 1 response: ${error instanceof Error ? error.message : String(error)}`);
+      const snippet = responseContent ? responseContent.slice(0, 200) : '<empty response>';
+      console.error('[LLT Assistant] Stage1 parse failure. Raw response snippet:', snippet);
+      writeDebugSnapshot('stage1', 'error', {
+        attempt: 'primary',
+        error: error instanceof Error ? error.message : String(error),
+        responseSnippet: snippet
+      });
+
+      if (allowParseRetry) {
+        console.warn('[LLT Assistant] Retrying Stage1 request due to invalid JSON response');
+        const retryPrompt = `${userPrompt}\n\nIMPORTANT: Your previous response was not valid JSON. Respond again with complete, well-formed JSON that strictly follows the required schema. Do not include any explanatory text.`;
+
+        writeDebugSnapshot('stage1', 'request', {
+          attempt: 'retry',
+          systemPrompt,
+          userPrompt: retryPrompt,
+          options: stage1Options
+        });
+
+        const retryContent = await this.callWithRetry(
+          systemPrompt,
+          retryPrompt,
+          stage1Options
+        );
+
+        console.log('[LLT Assistant] Stage1 raw response (retry):', retryContent);
+        writeDebugSnapshot('stage1', 'response', {
+          attempt: 'retry',
+          responseContent: retryContent
+        });
+
+        try {
+          const parsedRetry = this.parseStage1Response(retryContent);
+          this.validateStage1Response(parsedRetry);
+          writeDebugSnapshot('stage1', 'parsed', {
+            attempt: 'retry',
+            parsed: parsedRetry
+          });
+          return parsedRetry;
+        } catch (retryError) {
+          const retrySnippet = retryContent ? retryContent.slice(0, 200) : '<empty response>';
+          console.error('[LLT Assistant] Stage1 retry parse failure. Raw response snippet:', retrySnippet);
+          writeDebugSnapshot('stage1', 'error', {
+            attempt: 'retry',
+            error: retryError instanceof Error ? retryError.message : String(retryError),
+            responseSnippet: retrySnippet
+          });
+          throw new Error(
+            `Failed to parse Stage 1 response after retry. First error: ${error instanceof Error ? error.message : String(error)} | Second error: ${retryError instanceof Error ? retryError.message : String(retryError)} | Last snippet: ${retrySnippet}`
+          );
+        }
+      }
+
+      throw new Error(`Failed to parse Stage 1 response: ${error instanceof Error ? error.message : String(error)} | Raw snippet: ${snippet}`);
     }
   }
 
@@ -161,19 +241,39 @@ export class AgentLLMClient {
       maxTokens: options?.maxTokens ?? 3000 // More tokens for test code
     };
 
+    writeDebugSnapshot('stage2', 'request', {
+      systemPrompt,
+      userPrompt,
+      options: stage2Options
+    });
+
     const responseContent = await this.callWithRetry(
       systemPrompt,
       userPrompt,
       stage2Options
     );
 
+    console.log('[LLT Assistant] Stage2 raw response:', responseContent);
+    writeDebugSnapshot('stage2', 'response', {
+      responseContent
+    });
+
     // Parse JSON response
     try {
       const parsed = this.parseStage2Response(responseContent);
       this.validateStage2Response(parsed);
+      writeDebugSnapshot('stage2', 'parsed', {
+        parsed
+      });
       return parsed;
     } catch (error) {
-      throw new Error(`Failed to parse Stage 2 response: ${error instanceof Error ? error.message : String(error)}`);
+      const snippet = responseContent ? responseContent.slice(0, 200) : '<empty response>';
+      console.error('[LLT Assistant] Stage2 parse failure. Raw response snippet:', snippet);
+      writeDebugSnapshot('stage2', 'error', {
+        error: error instanceof Error ? error.message : String(error),
+        responseSnippet: snippet
+      });
+      throw new Error(`Failed to parse Stage 2 response: ${error instanceof Error ? error.message : String(error)} | Raw snippet: ${snippet}`);
     }
   }
 
@@ -197,10 +297,8 @@ export class AgentLLMClient {
    */
   private parseStage1Response(content: string): Stage1Response {
     // Try to extract JSON from markdown code blocks if present
-    const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    const jsonString = jsonMatch ? jsonMatch[1] : content;
-
-    const parsed = JSON.parse(jsonString);
+    const jsonString = extractJsonPayload(content);
+    const parsed = parseJson(jsonString);
 
     return {
       skip_confirmation: parsed.skip_confirmation ?? false,
@@ -218,10 +316,8 @@ export class AgentLLMClient {
    */
   private parseStage2Response(content: string): Stage2Response {
     // Try to extract JSON from markdown code blocks if present
-    const jsonMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    const jsonString = jsonMatch ? jsonMatch[1] : content;
-
-    const parsed = JSON.parse(jsonString);
+    const jsonString = extractJsonPayload(content);
+    const parsed = parseJson(jsonString);
 
     return {
       test_code: parsed.test_code || '',
@@ -298,6 +394,49 @@ export class AgentLLMClient {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+/**
+ * Extract JSON payload from an LLM response, handling code fences and extra text.
+ */
+function extractJsonPayload(content: string): string {
+  const trimmed = (content || '').trim();
+  if (!trimmed) {
+    throw new Error('LLM response was empty');
+  }
+
+  const codeFenceMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  if (codeFenceMatch) {
+    const candidate = codeFenceMatch[1].trim();
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
+
+  throw new Error('Unable to locate JSON payload in LLM response');
+}
+
+/**
+ * Safely parse JSON and surface a helpful error message on failure.
+ */
+function parseJson(jsonString: string): any {
+  const candidate = jsonString.trim();
+  if (!candidate) {
+    throw new Error('JSON payload was empty');
+  }
+
+  try {
+    return JSON.parse(candidate);
+  } catch (error) {
+    console.error('[LLT Assistant] Failed to parse JSON payload:', candidate);
+    throw error instanceof Error ? error : new Error(String(error));
   }
 }
 

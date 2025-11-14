@@ -43,10 +43,10 @@ import {
 const DEFAULT_OPTIONS: GenerationPipelineOptions = {
   showPreview: true,
   validateSyntax: true,
-  checkDependencies: true,
-  formatCode: true,
+  checkDependencies: false,  // Disabled to reduce external dependencies and avoid false positives
+  formatCode: false,  // Disabled to reduce external dependencies
   formatOptions: {
-    formatter: 'black',
+    formatter: 'none',
     lineLength: 88,
     skipOnError: true
   },
@@ -72,13 +72,15 @@ export class TestGenerationController {
    * Complete pipeline:
    * 1. Parse LLM response
    * 2. Generate imports
-   * 3. Format code
-   * 4. Validate syntax
-   * 5. Check dependencies
-   * 6. Resolve conflicts
-   * 7. Show preview (optional)
-   * 8. Insert code
-   * 9. Open file and highlight
+   * 3. Create complete test file
+   * 4. Validate syntax (optional)
+   * 5. Resolve conflicts
+   * 6. Show preview (optional)
+   * 7. Insert code
+   * 8. Open file and highlight
+   *
+   * Note: Code formatting and dependency checking have been disabled
+   * to reduce external dependencies and improve user experience.
    *
    * @param stage2Response - Response from Stage 2 Agent
    * @param functionContext - Context of the function being tested
