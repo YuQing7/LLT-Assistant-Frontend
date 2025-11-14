@@ -2,6 +2,14 @@ import * as vscode from 'vscode';
 import { ConfirmationResult } from '../types';
 
 /**
+ * Progress stage definition for multi-stage operations
+ */
+export interface ProgressStage {
+  message: string;
+  percentage: number;
+}
+
+/**
  * UI dialog components for user interaction
  */
 export class UIDialogs {
@@ -102,6 +110,80 @@ export class UIDialogs {
       },
       async () => {
         return await task();
+      }
+    );
+  }
+
+  /**
+   * Execute tasks with multi-stage progress feedback
+   * @param title - Overall progress title
+   * @param stages - Array of progress stages with messages and percentages
+   * @param tasks - Array of async tasks corresponding to each stage
+   * @returns Promise<any[]> - Array of results from all tasks
+   */
+  public static async withStages<T = any>(
+    title: string,
+    stages: ProgressStage[],
+    tasks: Array<() => Promise<T>>
+  ): Promise<T[]> {
+    if (stages.length !== tasks.length) {
+      throw new Error('Number of stages must match number of tasks');
+    }
+
+    return vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title,
+        cancellable: false
+      },
+      async (progress) => {
+        const results: T[] = [];
+
+        for (let i = 0; i < stages.length; i++) {
+          const stage = stages[i];
+
+          // Report progress
+          progress.report({
+            message: stage.message,
+            increment: i === 0 ? stage.percentage : (stage.percentage - stages[i - 1].percentage)
+          });
+
+          // Execute task
+          try {
+            const result = await tasks[i]();
+            results.push(result);
+          } catch (error) {
+            throw new Error(`Stage "${stage.message}" failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+
+        return results;
+      }
+    );
+  }
+
+  /**
+   * Execute a task with incremental progress updates
+   * @param title - Progress title
+   * @param task - Task that receives a progress updater function
+   * @returns Promise<T> - Result of the task
+   */
+  public static async withIncrementalProgress<T>(
+    title: string,
+    task: (updateProgress: (message?: string, increment?: number) => void) => Promise<T>
+  ): Promise<T> {
+    return vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title,
+        cancellable: false
+      },
+      async (progress) => {
+        const updateProgress = (message?: string, increment?: number) => {
+          progress.report({ message, increment });
+        };
+
+        return await task(updateProgress);
       }
     );
   }

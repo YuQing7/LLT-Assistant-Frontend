@@ -23,6 +23,10 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register the "Generate Tests" command
 	const generateTestsCommand = registerGenerateTestsCommand(context);
 	context.subscriptions.push(generateTestsCommand);
+
+	// Register the "Supplement Tests" command
+	const supplementTestsCommand = registerSupplementTestsCommand();
+	context.subscriptions.push(supplementTestsCommand);
 }
 
 /**
@@ -103,9 +107,10 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 			const testGenerator = new TestGenerationController();
 			const astAnalyzer = new PythonASTAnalyzer();
 
-			await UIDialogs.withProgress('Generating tests...', async () => {
+			await UIDialogs.withIncrementalProgress('Generating tests...', async (updateProgress) => {
 				try {
 					// Phase 2: Analyze function with Python AST
+					updateProgress('Analyzing function code...', 10);
 					const analysisResult = await astAnalyzer.buildFunctionContext(
 						filePath,
 						functionInfo.name
@@ -118,6 +123,7 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 					const functionContext = analysisResult.data;
 
 					// Phase 3: Run two-stage agent pipeline
+					updateProgress('Identifying test scenarios...', 30);
 					const confirmationHandler = async (stage1Response: Stage1Response): Promise<UserConfirmationResult> => {
 						// Show scenarios to user for confirmation
 						const scenarios = [
@@ -158,6 +164,7 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 						testDescription,
 						confirmationHandler
 					);
+					updateProgress('Generating test code...', 60);
 
 					if (!pipelineResult.success) {
 						throw new Error(pipelineResult.error || 'Pipeline execution failed');
@@ -168,11 +175,13 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 					}
 
 					// Phase 4: Generate and insert test code
+					updateProgress('Formatting and validating test code...', 80);
 					const generationResult = await testGenerator.generateAndInsertTests(
 						pipelineResult.stage2Response,
 						functionContext,
 						filePath
 					);
+					updateProgress('Inserting test code into file...', 95);
 
 					if (!generationResult.success) {
 						throw new Error(generationResult.error || 'Test generation failed');
@@ -207,6 +216,17 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 				['OK']
 			);
 		}
+	});
+}
+
+/**
+ * Register the "Supplement Tests" command
+ * @returns Disposable object
+ */
+function registerSupplementTestsCommand(): vscode.Disposable {
+	return vscode.commands.registerCommand('llt-assistant.supplementTests', async () => {
+		const { executeSupplementTestsCommand } = await import('./commands/supplement-tests.js');
+		await executeSupplementTestsCommand();
 	});
 }
 

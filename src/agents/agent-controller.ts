@@ -369,4 +369,77 @@ export class AgentFlowController {
   updateStage2Config(config: Partial<Stage2Config>) {
     this.stage2Config = { ...this.stage2Config, ...config };
   }
+
+  /**
+   * Supplement test scenarios
+   *
+   * Add new test cases to existing test suite without regenerating everything
+   *
+   * @param existingTestCode - The existing test code
+   * @param existingScenarios - List of already covered scenarios
+   * @param functionCode - The function being tested
+   * @param userAdditionalDescription - Description of new scenarios to add
+   * @returns Supplement scenarios result
+   */
+  async supplementTestScenarios(
+    existingTestCode: string,
+    existingScenarios: string[],
+    functionCode: string,
+    userAdditionalDescription: string
+  ): Promise<import('./types').SupplementScenariosResult> {
+    const startTime = Date.now();
+
+    try {
+      // Import the SupplementPromptBuilder
+      const { SupplementPromptBuilder } = await import('./prompt-builder.js');
+      const promptBuilder = new SupplementPromptBuilder();
+
+      // Build the prompt
+      const prompt = promptBuilder.buildPrompt(
+        existingTestCode,
+        existingScenarios,
+        functionCode,
+        userAdditionalDescription
+      );
+
+      // For supplement, we'll call the base API directly since we want plain text, not JSON
+      // Note: callStage2 expects Stage2Response (JSON), so we'll use a simpler approach
+      const response = await this.llmClient.callStage2(
+        prompt.system,
+        prompt.user,
+        {
+          temperature: this.stage2Config.temperature,
+          maxTokens: this.stage2Config.maxTokens,
+          responseFormat: 'json_object'
+        }
+      );
+
+      // Extract test code from Stage2Response
+      const newTestCode = response.test_code;
+
+      // Count new test methods (simple count of "def test_" occurrences)
+      const newTestCount = (newTestCode.match(/def test_/g) || []).length;
+
+      const executionTime = Date.now() - startTime;
+
+      return {
+        success: true,
+        newTestCode,
+        newTestCount,
+        coverageSummary: `Added ${newTestCount} new test case(s) for additional scenarios`,
+        tokensUsed: 0, // TODO: Track tokens properly
+        estimatedCost: 0, // TODO: Calculate cost
+        executionTime
+      };
+    } catch (error) {
+      const executionTime = Date.now() - startTime;
+      return {
+        success: false,
+        tokensUsed: 0,
+        estimatedCost: 0,
+        executionTime,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
 }

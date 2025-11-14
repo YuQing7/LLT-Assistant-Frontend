@@ -393,3 +393,84 @@ export class Stage2PromptBuilder {
     return this.examples;
   }
 }
+
+/**
+ * Supplement Scenarios Prompt Builder
+ *
+ * Builds prompts for adding new test cases to existing test suites
+ */
+export class SupplementPromptBuilder {
+  private systemPrompt: string;
+
+  constructor(promptsDir?: string) {
+    const dir = promptsDir || path.join(__dirname, '../../prompts');
+    const systemPromptPath = path.join(dir, 'supplement_system_prompt.txt');
+    this.systemPrompt = loadTextFile(systemPromptPath);
+  }
+
+  /**
+   * Build user prompt for supplementing test scenarios
+   */
+  buildUserPrompt(
+    existingTestCode: string,
+    existingScenarios: string[],
+    functionCode: string,
+    userAdditionalDescription: string
+  ): string {
+    const parts: string[] = [];
+
+    parts.push('## Existing Test Code:');
+    parts.push('```python');
+    parts.push(existingTestCode);
+    parts.push('```');
+    parts.push('');
+
+    parts.push('## Already Covered Scenarios:');
+    existingScenarios.forEach((scenario, index) => {
+      parts.push(`${index + 1}. ${scenario}`);
+    });
+    parts.push('');
+
+    parts.push('## Function Being Tested:');
+    parts.push('```python');
+    parts.push(functionCode);
+    parts.push('```');
+    parts.push('');
+
+    parts.push('## New Scenarios to Add:');
+    parts.push(userAdditionalDescription);
+    parts.push('');
+
+    parts.push('## Task:');
+    parts.push('Generate ONLY the new test methods that cover the new scenarios. Do not include class definitions, imports, or existing tests. Match the style and naming conventions of the existing tests.');
+
+    return parts.join('\n');
+  }
+
+  /**
+   * Build complete prompt (system + user)
+   */
+  buildPrompt(
+    existingTestCode: string,
+    existingScenarios: string[],
+    functionCode: string,
+    userAdditionalDescription: string
+  ): BuiltPrompt {
+    return {
+      system: this.systemPrompt,
+      user: this.buildUserPrompt(
+        existingTestCode,
+        existingScenarios,
+        functionCode,
+        userAdditionalDescription
+      )
+    };
+  }
+
+  /**
+   * Get system prompt only
+   */
+  getSystemPrompt(): string {
+    return this.systemPrompt;
+  }
+}

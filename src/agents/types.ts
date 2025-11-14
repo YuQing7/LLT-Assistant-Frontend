@@ -304,3 +304,49 @@ export interface PipelineTokenUsage {
   /** Estimated cost in USD */
   estimatedCost: number;
 }
+
+/**
+ * Response structure for supplement scenarios operation
+ */
+export interface SupplementScenariosResponse {
+  /** New test methods to add */
+  new_test_code: string;
+
+  /** Number of new test cases generated */
+  new_test_count: number;
+
+  /** Brief summary of what new scenarios are covered */
+  coverage_summary: string;
+
+  /** Optional: Additional notes or warnings */
+  notes?: string;
+}
+
+/**
+ * Result of supplement scenarios operation
+ */
+export interface SupplementScenariosResult {
+  /** Whether supplementation was successful */
+  success: boolean;
+
+  /** New test code generated */
+  newTestCode?: string;
+
+  /** Number of new tests added */
+  newTestCount?: number;
+
+  /** Coverage summary */
+  coverageSummary?: string;
+
+  /** Total tokens used */
+  tokensUsed: number;
+
+  /** Estimated cost in USD */
+  estimatedCost: number;
+
+  /** Error message if failed */
+  error?: string;
+
+  /** Execution time in milliseconds */
+  executionTime: number;
+}

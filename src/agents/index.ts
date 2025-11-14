@@ -13,7 +13,7 @@
 export * from './types';
 
 // Export prompt builders
-export { Stage1PromptBuilder, Stage2PromptBuilder } from './prompt-builder';
+export { Stage1PromptBuilder, Stage2PromptBuilder, SupplementPromptBuilder } from './prompt-builder';
 
 // Export LLM client
 export { AgentLLMClient, parseStage1Response, parseStage2Response } from './llm-client';

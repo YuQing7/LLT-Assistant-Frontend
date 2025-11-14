@@ -32,11 +32,30 @@ LLT Assistant helps developers write better tests faster by:
 - ✅ Stage 1 prompt builder for LLM integration
 - ✅ Auto-confirmation logic for simple functions
 
-### Coming Soon (Phase 3)
-- 🔜 Two-stage AI agent architecture integration
-- 🔜 Scenario confirmation workflow
-- 🔜 Automatic pytest code generation
-- 🔜 Test file creation and organization
+### Phase 3 (Complete) - AI Agent System
+- ✅ Two-stage AI agent architecture (Scenario Detection + Test Generation)
+- ✅ Intelligent scenario confirmation workflow
+- ✅ Automatic pytest code generation with best practices
+- ✅ Smart auto-confirmation for simple functions
+- ✅ Few-shot learning with examples
+- ✅ Input validation and quality assessment
+
+### Phase 4 (Complete) - Test Code Generation
+- ✅ Complete pytest test code generation
+- ✅ Test file creation and organization
+- ✅ Code formatting and validation
+- ✅ Dependency checking
+- ✅ Conflict detection and resolution
+- ✅ Test preview before insertion
+
+### Phase 5 (Complete) - Optimization & Quality Assurance
+- ✅ **Supplement Test Scenarios** - Add new tests without regenerating
+- ✅ **Multi-Stage Progress Feedback** - Clear progress indicators
+- ✅ **Enhanced Test Preview** - Review and edit before insertion
+- ✅ **Comprehensive Unit Tests** - Full test coverage for core modules
+- ✅ **Integration Tests** - End-to-end workflow testing
+- ✅ **Real-World Validation Suite** - Quality assurance with real scenarios
+- ✅ **Complete Documentation** - User Guide, FAQ, and examples
 
 ## Requirements
 
@@ -137,9 +156,27 @@ You can add your API key in two ways:
 1. Open a Python file in VSCode
 2. Place your cursor inside a function or select the function code
 3. Right-click to open the context menu
-4. Select "Generate Tests"
-5. Enter a description of what you want to test (e.g., "Test the login function with valid and invalid credentials")
-6. The extension will analyze your code and generate tests
+4. Select **"Generate Tests"**
+5. Enter a description of what you want to test (e.g., "test with valid and invalid inputs, edge cases")
+6. Review proposed scenarios (if prompted) and confirm
+7. Tests are automatically generated and inserted into your test file!
+
+### Supplement Existing Tests (NEW in Phase 5!)
+
+1. Open your test file (e.g., `test_module.py`)
+2. Right-click anywhere in the file
+3. Select **"Supplement Test Scenarios"**
+4. Review existing coverage
+5. Enter description of new scenarios to add
+6. New test methods are added without modifying existing tests!
+
+### 📚 Documentation
+
+- **[User Guide](./docs/USER_GUIDE.md)** - Complete guide with examples
+- **[FAQ](./docs/FAQ.md)** - Frequently asked questions
+- **[Prompt Design](./docs/PROMPT_DESIGN.md)** - How prompts work
+- **[Flow Diagrams](./docs/FLOW_DIAGRAM.md)** - System architecture
+- **[Phase 3 Details](./docs/PHASE3_README.md)** - Agent system documentation
 
 ### Example
 
@@ -308,7 +345,49 @@ Contributions are welcome! Please feel free to submit issues and pull requests.
 
 ## Release Notes
 
-### 0.0.2 (Phase 2)
+### 0.0.5 (Phase 5) - Optimization & Quality Assurance
+
+**New Features:**
+- 🎯 **Supplement Test Scenarios** - Add new tests to existing test files without regeneration
+- 📊 **Multi-Stage Progress Feedback** - Clear progress indicators for each generation stage
+- 👁️ **Enhanced Test Preview** - Review, edit, and customize tests before insertion
+- ⚡ **Improved Performance** - Optimized API calls and token usage
+
+**Quality Assurance:**
+- ✅ Comprehensive unit tests for all core modules
+- ✅ End-to-end integration tests
+- ✅ Real-world validation suite with 8+ test scenarios
+- ✅ Quality metrics and evaluation framework
+
+**Documentation:**
+- 📖 Complete User Guide with examples
+- ❓ FAQ covering 27+ common questions
+- 🎨 Best practices and tips
+- 🔧 Troubleshooting guide
+
+### 0.0.4 (Phase 4) - Test Code Generation
+
+Complete test generation pipeline:
+- Pytest code generation with best practices
+- Code formatting and validation
+- Syntax checking and error detection
+- Dependency checking and installation prompts
+- Test file creation and organization
+- Conflict detection and resolution
+- Multiple insert modes (append, replace, create new)
+
+### 0.0.3 (Phase 3) - AI Agent System
+
+Two-stage AI agent architecture:
+- Stage 1: Intelligent scenario identification
+- Stage 2: Production-ready test code generation
+- Smart auto-confirmation logic
+- Few-shot learning with examples
+- Input validation and quality assessment
+- User confirmation workflow
+- Token tracking and cost estimation
+
+### 0.0.2 (Phase 2) - Python AST Analysis
 
 Python AST Analysis Engine:
 - AST-based code parsing with Python's `ast` module
@@ -319,20 +398,16 @@ Python AST Analysis Engine:
 - Import statement analysis
 - Docstring and comment extraction
 - Cyclomatic complexity calculation
-- Stage 1 prompt builder for LLM integration
-- Auto-confirmation logic for simple functions
 
-### 0.0.1 (Phase 1)
+### 0.0.1 (Phase 1) - Foundation
 
 Initial release with basic infrastructure:
 - Right-click menu integration
-- API client setup (OpenAI & Claude)
+- API client setup (OpenAI, Claude, DeepSeek, OpenRouter)
 - Configuration management
 - Basic code analysis utilities
 - UI dialog components
 - Error handling and retry mechanisms
-
-**Next**: Phase 3 will implement the full AI-powered test generation workflow.
 
 ---
 
