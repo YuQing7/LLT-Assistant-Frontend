@@ -23,7 +23,7 @@ export interface QualityTreeItem {
 	label: string;
 	description?: string;
 	tooltip?: string | vscode.MarkdownString;
-	iconPath?: string | vscode.ThemeIcon | { light: string; dark: string };
+	iconPath?: vscode.ThemeIcon;
 	collapsibleState?: vscode.TreeItemCollapsibleState;
 	contextValue?: string;
 	command?: vscode.Command;

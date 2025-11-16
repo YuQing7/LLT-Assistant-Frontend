@@ -1,7 +1,8 @@
 /**
- * LLT Assistant - VSCode Extension for Python Test Generation
+ * LLT Assistant - VSCode Extension for Python Test Generation and Quality Analysis
  *
- * This extension helps developers generate pytest unit tests using AI.
+ * This extension helps developers generate pytest unit tests using AI and
+ * analyze test quality for potential issues.
  */
 
 import * as vscode from 'vscode';
@@ -11,6 +12,13 @@ import { CodeAnalyzer } from './utils';
 import { PythonASTAnalyzer } from './analysis';
 import { AgentFlowController, Stage1Response, UserConfirmationResult } from './agents';
 import { TestGenerationController } from './generation';
+import {
+	QualityBackendClient,
+	QualityTreeProvider,
+	AnalyzeQualityCommand,
+	QualityStatusBarManager,
+	QualityConfigManager
+} from './quality';
 
 /**
  * Extension activation entry point
@@ -20,6 +28,7 @@ import { TestGenerationController } from './generation';
 export function activate(context: vscode.ExtensionContext) {
 	console.log('LLT Assistant extension is now active');
 
+	// ===== Test Generation Feature =====
 	// Register the "Generate Tests" command
 	const generateTestsCommand = registerGenerateTestsCommand(context);
 	context.subscriptions.push(generateTestsCommand);
@@ -27,6 +36,95 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register the "Supplement Tests" command
 	const supplementTestsCommand = registerSupplementTestsCommand();
 	context.subscriptions.push(supplementTestsCommand);
+
+	// ===== Quality Analysis Feature =====
+	// Initialize quality analysis components
+	const qualityBackendClient = new QualityBackendClient();
+	const qualityTreeProvider = new QualityTreeProvider();
+	const qualityStatusBar = new QualityStatusBarManager();
+	const analyzeCommand = new AnalyzeQualityCommand(qualityBackendClient, qualityTreeProvider);
+
+	// Register tree view for quality analysis
+	const treeView = vscode.window.createTreeView('lltQualityExplorer', {
+		treeDataProvider: qualityTreeProvider,
+		showCollapseAll: true
+	});
+	context.subscriptions.push(treeView);
+
+	// Register quality analysis commands
+	const analyzeQualityCommand = vscode.commands.registerCommand(
+		'llt-assistant.analyzeQuality',
+		async () => {
+			qualityStatusBar.showAnalyzing();
+			await analyzeCommand.execute();
+			const result = qualityTreeProvider.getAnalysisResult();
+			if (result) {
+				const criticalCount = result.metrics.severity_breakdown?.error || 0;
+				qualityStatusBar.showResults(result.issues.length, criticalCount);
+			} else {
+				qualityStatusBar.showIdle();
+			}
+		}
+	);
+
+	const refreshQualityViewCommand = vscode.commands.registerCommand(
+		'llt-assistant.refreshQualityView',
+		async () => {
+			qualityStatusBar.showAnalyzing();
+			await analyzeCommand.execute();
+			const result = qualityTreeProvider.getAnalysisResult();
+			if (result) {
+				const criticalCount = result.metrics.severity_breakdown?.error || 0;
+				qualityStatusBar.showResults(result.issues.length, criticalCount);
+			} else {
+				qualityStatusBar.showIdle();
+			}
+		}
+	);
+
+	const clearQualityIssuesCommand = vscode.commands.registerCommand(
+		'llt-assistant.clearQualityIssues',
+		() => {
+			qualityTreeProvider.clear();
+			qualityStatusBar.showIdle();
+			vscode.window.showInformationMessage('Quality issues cleared');
+		}
+	);
+
+	const showIssueCommand = vscode.commands.registerCommand(
+		'llt-assistant.showIssue',
+		async (issue) => {
+			// Navigate to the issue location in the file
+			const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+			if (!workspaceRoot) {
+				return;
+			}
+
+			const filePath = vscode.Uri.file(`${workspaceRoot}/${issue.file}`);
+			const document = await vscode.workspace.openTextDocument(filePath);
+			const editor = await vscode.window.showTextDocument(document);
+
+			// Highlight the line with the issue
+			const line = issue.line - 1; // Convert to 0-indexed
+			const range = new vscode.Range(line, 0, line, document.lineAt(line).text.length);
+			editor.selection = new vscode.Selection(range.start, range.end);
+			editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+		}
+	);
+
+	context.subscriptions.push(
+		analyzeQualityCommand,
+		refreshQualityViewCommand,
+		clearQualityIssuesCommand,
+		showIssueCommand,
+		qualityStatusBar
+	);
+
+	// Watch for configuration changes
+	const configChangeListener = QualityConfigManager.onDidChange(() => {
+		qualityBackendClient.updateBackendUrl();
+	});
+	context.subscriptions.push(configChangeListener);
 }
 
 /**
