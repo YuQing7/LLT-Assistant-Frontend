@@ -13,7 +13,9 @@
   "activationEvents": [
     "onLanguage:python",
     "onView:lltQualityExplorer",
-    "workspaceContains:**/test_*.py"
+    "onView:lltCoverageExplorer",
+    "workspaceContains:**/test_*.py",
+    "workspaceContains:**/coverage.xml"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -23,6 +25,11 @@
           "id": "llt-quality",
           "title": "LLT Quality",
           "icon": "resources/icons/llt-icon.svg"
+        },
+        {
+          "id": "llt-coverage",
+          "title": "LLT Coverage",
+          "icon": "resources/icons/coverage-icon.svg"
         }
       ]
     },
@@ -33,6 +40,14 @@
           "name": "Test Quality",
           "icon": "resources/icons/llt-icon.svg",
           "contextualTitle": "LLT Test Quality Analysis"
+        }
+      ],
+      "llt-coverage": [
+        {
+          "id": "lltCoverageExplorer",
+          "name": "Coverage Analysis",
+          "icon": "resources/icons/coverage-icon.svg",
+          "contextualTitle": "LLT Coverage Optimization"
         }
       ]
     },
@@ -59,6 +74,37 @@
         "command": "llt-assistant.clearQualityIssues",
         "title": "LLT: Clear Quality Issues",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "llt-assistant.analyzeCoverage",
+        "title": "LLT: Analyze Coverage",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "llt-assistant.refreshCoverage",
+        "title": "LLT: Refresh Coverage",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "llt-assistant.clearCoverage",
+        "title": "LLT: Clear Coverage",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "llt-assistant.generateCoverageTest",
+        "title": "LLT: Generate Coverage Test"
+      },
+      {
+        "command": "llt-assistant.batchGenerateTests",
+        "title": "LLT: Batch Generate Tests"
+      },
+      {
+        "command": "llt-assistant.showCoverageImprovement",
+        "title": "LLT: Show Coverage Improvement"
+      },
+      {
+        "command": "llt-assistant.goToLine",
+        "title": "LLT: Go to Line"
       }
     ],
     "menus": {
@@ -76,6 +122,21 @@
         {
           "command": "llt-assistant.clearQualityIssues",
           "when": "view == lltQualityExplorer",
+          "group": "navigation@3"
+        },
+        {
+          "command": "llt-assistant.analyzeCoverage",
+          "when": "view == lltCoverageExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "llt-assistant.refreshCoverage",
+          "when": "view == lltCoverageExplorer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "llt-assistant.clearCoverage",
+          "when": "view == lltCoverageExplorer",
           "group": "navigation@3"
         }
       ],
@@ -212,6 +273,42 @@
           "minimum": 0,
           "maximum": 1,
           "description": "Temperature for LLM quality analysis (0-1)"
+        },
+        "llt-assistant.coverage.coverageFilePath": {
+          "type": "string",
+          "default": "coverage.xml",
+          "description": "Path to coverage.xml file (relative to workspace root)"
+        },
+        "llt-assistant.coverage.minFunctionComplexity": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Minimum function complexity to consider for coverage optimization"
+        },
+        "llt-assistant.coverage.autoRefresh": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically refresh coverage data when coverage.xml changes"
+        },
+        "llt-assistant.coverage.prioritize": {
+          "type": "string",
+          "enum": [
+            "complexity",
+            "uncovered",
+            "branch"
+          ],
+          "enumDescriptions": [
+            "Prioritize functions by complexity",
+            "Prioritize completely uncovered functions",
+            "Prioritize functions with uncovered branches"
+          ],
+          "default": "complexity",
+          "description": "Strategy for prioritizing coverage improvements"
+        },
+        "llt-assistant.coverage.enableInlinePreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline preview for generated tests with Accept/Edit/Reject actions"
         }
       }
     }

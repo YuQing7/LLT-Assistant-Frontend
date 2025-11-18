@@ -21,6 +21,11 @@ import {
 	IssueDecorator,
 	QualitySuggestionProvider
 } from './quality';
+import {
+	CoverageBackendClient,
+	CoverageTreeDataProvider,
+	CoverageCommands
+} from './coverage';
 
 /**
  * Extension activation entry point
@@ -204,6 +209,66 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 		context.subscriptions.push(autoAnalyzeListener);
 	}
+
+	// ===== Coverage Optimization Feature =====
+	// Initialize coverage optimization components
+	const coverageBackendClient = new CoverageBackendClient();
+	const coverageTreeProvider = new CoverageTreeDataProvider();
+	const coverageCommands = new CoverageCommands(coverageTreeProvider, coverageBackendClient);
+
+	// Register tree view for coverage analysis
+	const coverageTreeView = vscode.window.createTreeView('lltCoverageExplorer', {
+		treeDataProvider: coverageTreeProvider,
+		showCollapseAll: true
+	});
+	context.subscriptions.push(coverageTreeView);
+
+	// Register coverage analysis commands
+	const analyzeCoverageCommand = vscode.commands.registerCommand(
+		'llt-assistant.analyzeCoverage',
+		() => coverageCommands.analyzeCoverage()
+	);
+
+	const refreshCoverageCommand = vscode.commands.registerCommand(
+		'llt-assistant.refreshCoverage',
+		() => coverageCommands.refreshCoverage()
+	);
+
+	const clearCoverageCommand = vscode.commands.registerCommand(
+		'llt-assistant.clearCoverage',
+		() => coverageCommands.clearCoverage()
+	);
+
+	const generateCoverageTestCommand = vscode.commands.registerCommand(
+		'llt-assistant.generateCoverageTest',
+		(filePath: string, func: any) => coverageCommands.generateCoverageTest(filePath, func)
+	);
+
+	const batchGenerateTestsCommand = vscode.commands.registerCommand(
+		'llt-assistant.batchGenerateTests',
+		(filePath: string) => coverageCommands.batchGenerateTests(filePath)
+	);
+
+	const showCoverageImprovementCommand = vscode.commands.registerCommand(
+		'llt-assistant.showCoverageImprovement',
+		() => coverageCommands.showImprovementReport()
+	);
+
+	const goToLineCommand = vscode.commands.registerCommand(
+		'llt-assistant.goToLine',
+		(filePath: string, line: number) => coverageCommands.goToLine(filePath, line)
+	);
+
+	context.subscriptions.push(
+		analyzeCoverageCommand,
+		refreshCoverageCommand,
+		clearCoverageCommand,
+		generateCoverageTestCommand,
+		batchGenerateTestsCommand,
+		showCoverageImprovementCommand,
+		goToLineCommand,
+		coverageCommands
+	);
 }
 
 /**
