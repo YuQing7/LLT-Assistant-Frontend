@@ -10,6 +10,7 @@ import {
 	BackendError,
 	HealthCheckResponse
 } from './types';
+import { QUALITY_DEFAULTS } from '../utils/constants';
 
 export class QualityBackendClient {
 	private client: AxiosInstance;
@@ -33,7 +34,7 @@ export class QualityBackendClient {
 	 */
 	private getBackendUrl(): string {
 		const config = vscode.workspace.getConfiguration('llt-assistant.quality');
-		return config.get('backendUrl', 'http://localhost:8000/api/v1');
+		return config.get('backendUrl', QUALITY_DEFAULTS.BACKEND_URL);
 	}
 
 	/**
@@ -71,16 +72,38 @@ export class QualityBackendClient {
 	 * POST /workflows/analyze-quality
 	 */
 	async analyzeQuality(request: AnalyzeQualityRequest): Promise<AnalyzeQualityResponse> {
-		try {
-			const response = await this.client.post<AnalyzeQualityResponse>(
-				'/workflows/analyze-quality',
-				request
-			);
+		const maxRetries = QUALITY_DEFAULTS.RETRY_MAX_ATTEMPTS;
+		let lastError: any;
 
-			return response.data;
-		} catch (error) {
-			throw this.handleApiError(error);
+		for (let attempt = 0; attempt < maxRetries; attempt++) {
+			try {
+				const response = await this.client.post<AnalyzeQualityResponse>(
+					'/workflows/analyze-quality',
+					request
+				);
+
+				return response.data;
+			} catch (error) {
+				lastError = error;
+
+				// Check if error is retryable (network errors, timeouts, 5xx errors)
+				if (!this.isRetryableError(error)) {
+					throw this.handleApiError(error);
+				}
+
+				// Don't retry on last attempt
+				if (attempt === maxRetries - 1) {
+					break;
+				}
+
+				// Exponential backoff: 1s, 2s, 4s
+				const delayMs = Math.pow(2, attempt) * QUALITY_DEFAULTS.RETRY_BASE_DELAY_MS;
+				console.log(`[LLT Quality API] Retry attempt ${attempt + 1}/${maxRetries} after ${delayMs}ms`);
+				await this.delay(delayMs);
+			}
 		}
+
+		throw this.handleApiError(lastError);
 	}
 
 	/**
@@ -181,9 +204,14 @@ export class QualityBackendClient {
 			return 'Unknown validation error';
 		}
 
+		if (errors.length === 0) {
+			return 'Validation failed with no details';
+		}
+
 		return errors
 			.map(err => {
-				const field = err.loc?.join('.') || 'unknown';
+				// Ensure err.loc is array before calling join
+				const field = Array.isArray(err.loc) ? err.loc.join('.') : 'unknown';
 				const message = err.msg || 'invalid value';
 				return `${field}: ${message}`;
 			})
@@ -201,5 +229,43 @@ export class QualityBackendClient {
 			this.client.defaults.baseURL = newUrl;
 			console.log(`[LLT Quality API] Backend URL updated to: ${newUrl}`);
 		}
+	}
+
+	/**
+	 * Check if an error is retryable
+	 */
+	private isRetryableError(error: any): boolean {
+		if (axios.isAxiosError(error)) {
+			const axiosError = error as AxiosError;
+
+			// Network errors (no response)
+			if (!axiosError.response) {
+				return true;
+			}
+
+			// Server errors (5xx)
+			if (axiosError.response.status >= 500) {
+				return true;
+			}
+
+			// Rate limiting (429)
+			if (axiosError.response.status === 429) {
+				return true;
+			}
+		}
+
+		// Timeout errors
+		if (error.code === 'ECONNABORTED') {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Delay helper for retry backoff
+	 */
+	private delay(ms: number): Promise<void> {
+		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 }

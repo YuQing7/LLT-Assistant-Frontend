@@ -51,10 +51,12 @@ export class IssueDecorator {
 		// Group issues by file
 		this.issuesByFile.clear();
 		for (const issue of issues) {
-			if (!this.issuesByFile.has(issue.file)) {
-				this.issuesByFile.set(issue.file, []);
+			const fileIssues = this.issuesByFile.get(issue.file);
+			if (fileIssues) {
+				fileIssues.push(issue);
+			} else {
+				this.issuesByFile.set(issue.file, [issue]);
 			}
-			this.issuesByFile.get(issue.file)!.push(issue);
 		}
 
 		// Update all visible editors
@@ -81,6 +83,7 @@ export class IssueDecorator {
 	public updateEditorDecorations(editor: vscode.TextEditor): void {
 		const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 		if (!workspaceRoot) {
+			console.warn('[LLT Quality] No workspace folder found, cannot update decorations');
 			return;
 		}
 

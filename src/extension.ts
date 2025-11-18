@@ -183,13 +183,21 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Auto-analyze feature: analyze when opening test files
 	if (QualityConfigManager.getAutoAnalyze()) {
+		let autoAnalyzeTimer: NodeJS.Timeout | undefined;
+
 		const autoAnalyzeListener = vscode.workspace.onDidOpenTextDocument(async (document) => {
 			if (document.languageId === 'python') {
 				const fileName = document.fileName.toLowerCase();
 				if (fileName.includes('test_') || fileName.endsWith('_test.py')) {
+					// Clear previous timer to implement proper debounce
+					if (autoAnalyzeTimer) {
+						clearTimeout(autoAnalyzeTimer);
+					}
+
 					// Debounce to avoid multiple simultaneous analyses
-					setTimeout(() => {
+					autoAnalyzeTimer = setTimeout(() => {
 						executeQualityAnalysis();
+						autoAnalyzeTimer = undefined;
 					}, 1000);
 				}
 			}

@@ -86,6 +86,13 @@ export class QualityTreeProvider implements vscode.TreeDataProvider<QualityTreeI
 		}
 
 		const severityFilter = QualityConfigManager.getSeverityFilter();
+
+		// If filter is empty, show all issues
+		if (severityFilter.length === 0) {
+			console.warn('[LLT Quality] Severity filter is empty, showing all issues');
+			return this.analysisResult.issues;
+		}
+
 		return this.analysisResult.issues.filter(issue =>
 			severityFilter.includes(issue.severity)
 		);
@@ -231,10 +238,12 @@ export class QualityTreeProvider implements vscode.TreeDataProvider<QualityTreeI
 		const filteredIssues = this.getFilteredIssues();
 
 		for (const issue of filteredIssues) {
-			if (!fileMap.has(issue.file)) {
-				fileMap.set(issue.file, []);
+			const issues = fileMap.get(issue.file);
+			if (issues) {
+				issues.push(issue);
+			} else {
+				fileMap.set(issue.file, [issue]);
 			}
-			fileMap.get(issue.file)!.push(issue);
 		}
 
 		return fileMap;

@@ -4,6 +4,7 @@
 
 import * as vscode from 'vscode';
 import { AnalysisMode } from '../api/types';
+import { QUALITY_DEFAULTS } from './constants';
 
 export class QualityConfigManager {
 	private static readonly SECTION = 'llt-assistant.quality';
@@ -12,56 +13,56 @@ export class QualityConfigManager {
 	 * Get backend URL
 	 */
 	static getBackendUrl(): string {
-		return this.get<string>('backendUrl', 'http://localhost:8000/api/v1');
+		return this.get<string>('backendUrl', QUALITY_DEFAULTS.BACKEND_URL);
 	}
 
 	/**
 	 * Get analysis mode
 	 */
 	static getAnalysisMode(): AnalysisMode {
-		return this.get<AnalysisMode>('analysisMode', 'hybrid');
+		return this.get<AnalysisMode>('analysisMode', QUALITY_DEFAULTS.ANALYSIS_MODE);
 	}
 
 	/**
 	 * Get auto-analyze setting
 	 */
 	static getAutoAnalyze(): boolean {
-		return this.get<boolean>('autoAnalyze', false);
+		return this.get<boolean>('autoAnalyze', QUALITY_DEFAULTS.AUTO_ANALYZE);
 	}
 
 	/**
 	 * Get inline decorations setting
 	 */
 	static getEnableInlineDecorations(): boolean {
-		return this.get<boolean>('enableInlineDecorations', true);
+		return this.get<boolean>('enableInlineDecorations', QUALITY_DEFAULTS.ENABLE_INLINE_DECORATIONS);
 	}
 
 	/**
 	 * Get code actions setting
 	 */
 	static getEnableCodeActions(): boolean {
-		return this.get<boolean>('enableCodeActions', true);
+		return this.get<boolean>('enableCodeActions', QUALITY_DEFAULTS.ENABLE_CODE_ACTIONS);
 	}
 
 	/**
 	 * Get severity filter
 	 */
 	static getSeverityFilter(): string[] {
-		return this.get<string[]>('severityFilter', ['error', 'warning', 'info']);
+		return this.get<string[]>('severityFilter', QUALITY_DEFAULTS.SEVERITY_FILTER);
 	}
 
 	/**
 	 * Get disabled rules
 	 */
 	static getDisabledRules(): string[] {
-		return this.get<string[]>('disabledRules', []);
+		return this.get<string[]>('disabledRules', QUALITY_DEFAULTS.DISABLED_RULES);
 	}
 
 	/**
 	 * Get LLM temperature
 	 */
 	static getLLMTemperature(): number {
-		return this.get<number>('llmTemperature', 0.3);
+		return this.get<number>('llmTemperature', QUALITY_DEFAULTS.LLM_TEMPERATURE);
 	}
 
 	/**

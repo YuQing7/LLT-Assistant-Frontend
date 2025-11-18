@@ -4,7 +4,7 @@
   "description": "AI-powered pytest test generator and quality analyzer. Generate comprehensive unit tests and detect quality issues in Python test code.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.105.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Testing",
@@ -111,7 +111,7 @@
         "llt-assistant.backendUrl": {
           "type": "string",
           "default": "https://llt-assistant.fly.dev/api/v1",
-          "description": "Backend API URL (only used in backend mode)"
+          "description": "Backend API URL for test generation (only used in backend mode)"
         },
         "llt-assistant.apiProvider": {
           "type": "string",
@@ -149,7 +149,7 @@
         "llt-assistant.quality.backendUrl": {
           "type": "string",
           "default": "http://localhost:8000/api/v1",
-          "description": "LLT backend API base URL for quality analysis"
+          "description": "Backend API URL for test quality analysis (separate from test generation backend)"
         },
         "llt-assistant.quality.analysisMode": {
           "type": "string",
@@ -244,7 +244,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "axios": "^1.13.2",
+    "axios": "^1.6.0",
     "tree-sitter": "^0.25.0",
     "tree-sitter-python": "^0.25.0"
   }

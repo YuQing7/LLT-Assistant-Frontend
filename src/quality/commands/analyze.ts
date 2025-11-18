@@ -4,9 +4,10 @@
  */
 
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { QualityBackendClient, FileInput, AnalyzeQualityRequest, BackendError } from '../api';
 import { QualityTreeProvider } from '../activityBar';
-import { QualityConfigManager } from '../utils/config';
+import { QualityConfigManager, EXTENSION_NAME } from '../utils';
 
 export class AnalyzeQualityCommand {
 	constructor(
@@ -133,12 +134,16 @@ export class AnalyzeQualityCommand {
 	): Promise<FileInput[]> {
 		const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
 
+		if (!workspaceRoot) {
+			throw new Error('No workspace folder found');
+		}
+
 		const filesWithContent = await Promise.all(
 			files.map(async (file) => {
 				const content = await vscode.workspace.fs.readFile(file);
-				const relativePath = workspaceRoot
-					? file.fsPath.replace(workspaceRoot, '').replace(/^\//, '')
-					: file.fsPath;
+				// Use path.relative for cross-platform compatibility
+				const relativePath = path.relative(workspaceRoot, file.fsPath)
+					.replace(/\\/g, '/'); // Normalize to forward slashes
 
 				return {
 					path: relativePath,
@@ -161,7 +166,7 @@ export class AnalyzeQualityCommand {
 		};
 
 		const clientMetadata = {
-			extension_version: vscode.extensions.getExtension('llt-assistant')?.packageJSON.version || '0.0.1',
+			extension_version: vscode.extensions.getExtension(EXTENSION_NAME)?.packageJSON.version || '0.0.1',
 			vscode_version: vscode.version,
 			platform: process.platform,
 			workspace_hash: this.getWorkspaceHash()
