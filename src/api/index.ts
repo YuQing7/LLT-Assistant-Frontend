@@ -3,6 +3,4 @@
  */
 
 export { ConfigurationManager } from './config';
-export { LLMApiClient } from './client';
-export { ApiErrorHandler } from './errorHandler';
 export { BackendApiClient } from './backend-client';

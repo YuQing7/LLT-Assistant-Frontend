@@ -8,9 +8,8 @@ LLT Assistant is a comprehensive testing toolkit that helps developers:
 
 ### 🧪 Test Generation
 - **Automatically generate pytest unit tests** for Python functions using AI
-- **Supplement existing tests** with additional test scenarios
-- **Support for multiple LLM providers**: OpenAI, Claude, DeepSeek, OpenRouter
-- **Backend API mode**: No API key required (recommended)
+- **Powered by backend API**: No API key required
+- **Two-stage AI generation**: Scenario identification + Code generation
 
 ### 🔍 Quality Analysis
 - **Detect test quality issues** automatically across your test suite
@@ -26,8 +25,7 @@ LLT Assistant is a comprehensive testing toolkit that helps developers:
 - ✅ **Right-click context menu** integration for Python files
 - ✅ **AST-based code analysis** using Python's `ast` module
 - ✅ **Two-stage AI agent architecture** (Scenario Detection + Test Generation)
-- ✅ **API integration** with OpenAI, Claude, DeepSeek, and OpenRouter
-- ✅ **Backend API mode** - No API key required (recommended)
+- ✅ **Backend API integration** - No API key required
 - ✅ **Complete pytest test generation** with best practices
 - ✅ **Supplement existing tests** - Add new test scenarios without regeneration
 - ✅ **Multi-stage progress feedback** with clear indicators
@@ -84,17 +82,9 @@ LLT Assistant is a comprehensive testing toolkit that helps developers:
 - **VSCode**: Version 1.105.0 or higher
 - **Python**: 3.8 or higher (for code analysis and test execution)
 
-### For Test Generation (Backend Mode - Recommended)
+### For Test Generation
 - No API key required! Just install and use.
 - Backend service: `https://llt-assistant.fly.dev`
-
-### For Test Generation (Direct Mode - Optional)
-Only if you prefer direct LLM API calls:
-- An API key from one of:
-  - **OpenAI**: gpt-4, gpt-4-turbo, gpt-3.5-turbo
-  - **Anthropic Claude**: claude-3-opus, claude-3-sonnet, claude-3-haiku
-  - **DeepSeek**: deepseek-chat, deepseek-coder
-  - **OpenRouter**: Various models available
 
 ### For Quality Analysis
 - Backend service running at `http://localhost:8000` (for local development)
@@ -152,20 +142,9 @@ Open VSCode Settings (`Ctrl+,` / `Cmd+,`) and search for "LLT Assistant":
 
 #### Test Generation Settings
 
-1. **API Mode** (`llt-assistant.apiMode`)
-   - `backend` (default): Use LLT Assistant Backend API - **No API key required**
-   - `direct`: Direct LLM API calls - Requires your own API key
-
-2. **Backend URL** (`llt-assistant.backendUrl`)
+1. **Backend URL** (`llt-assistant.backendUrl`)
    - Default: `https://llt-assistant.fly.dev/api/v1`
    - Change only if using a custom backend
-
-3. **Direct Mode Settings** (only if using `direct` mode):
-   - **API Provider** (`llt-assistant.apiProvider`): `openai`, `claude`, `deepseek`, or `openrouter`
-   - **API Key** (`llt-assistant.apiKey`): Your LLM API key
-   - **Model Name** (`llt-assistant.modelName`): e.g., `gpt-4`, `claude-3-opus-20240229`
-   - **Temperature** (`llt-assistant.temperature`): 0-2 (default: 0.3)
-   - **Max Tokens** (`llt-assistant.maxTokens`): Maximum response length (default: 2000)
 
 #### Quality Analysis Settings
 

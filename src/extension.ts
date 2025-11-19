@@ -6,11 +6,11 @@
  */
 
 import * as vscode from 'vscode';
-import { ConfigurationManager, LLMApiClient, ApiErrorHandler } from './api';
+import { ConfigurationManager } from './api';
 import { UIDialogs } from './ui';
 import { CodeAnalyzer } from './utils';
 import { PythonASTAnalyzer } from './analysis';
-import { AgentFlowController, BackendAgentController, Stage1Response, UserConfirmationResult } from './agents';
+import { BackendAgentController, Stage1Response, UserConfirmationResult } from './agents';
 import { TestGenerationController } from './generation';
 import {
 	QualityBackendClient,
@@ -431,30 +431,12 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 			}
 
 			// Initialize controllers
-			const apiMode = configManager.getApiMode();
 			const testGenerator = new TestGenerationController();
 			const astAnalyzer = new PythonASTAnalyzer();
 
-			// Choose controller based on API mode
-			let agentController: AgentFlowController | BackendAgentController;
-			if (apiMode === 'backend') {
-				// Backend mode - no API key needed
-				const backendUrl = configManager.getBackendUrl();
-				agentController = new BackendAgentController(backendUrl);
-			} else {
-				// Direct LLM mode - API key required
-				let apiKey: string;
-				try {
-					apiKey = await configManager.getApiKey();
-				} catch (error) {
-					// User cancelled API key input
-					return;
-				}
-
-				const provider = configManager.getApiProvider();
-				const modelName = configManager.getModelName();
-				agentController = new AgentFlowController(apiKey, provider, modelName);
-			}
+			// Initialize backend controller
+			const backendUrl = configManager.getBackendUrl();
+			const agentController = new BackendAgentController(backendUrl);
 
 			await UIDialogs.withIncrementalProgress('Generating tests...', async (updateProgress) => {
 				try {
@@ -552,9 +534,8 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 					);
 
 				} catch (error) {
-					const errorHandler = new ApiErrorHandler();
-					const errorResult = errorHandler.handleError(error);
-					await UIDialogs.showError(errorResult.userMessage, ['OK']);
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					await UIDialogs.showError(`Test generation failed: ${errorMessage}`, ['OK']);
 				}
 			});
 

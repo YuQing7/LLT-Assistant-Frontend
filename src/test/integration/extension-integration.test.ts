@@ -49,7 +49,7 @@ suite('Extension Integration Test Suite', () => {
     test('should have default configuration values', () => {
       const config = vscode.workspace.getConfiguration('llt-assistant');
 
-      assert.strictEqual(config.get('apiMode'), 'backend');
+      // Extension now uses backend-only mode
       assert.strictEqual(
         config.get('backendUrl'),
         'https://llt-assistant.fly.dev/api/v1'
