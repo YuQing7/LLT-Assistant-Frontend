@@ -1,0 +1,247 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # Unit tests - fast, no VSCode required
+  unit-tests:
+    name: Unit Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18.x, 20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Setup Python (for native modules)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install setuptools (Python 3.12+ compatibility)
+        run: pip install setuptools
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run type checking
+        run: pnpm run check-types
+
+      - name: Run linter
+        run: pnpm run lint
+
+      - name: Run unit tests
+        run: pnpm run test:unit
+
+      - name: Run property-based tests
+        run: pnpm run test:property
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results-${{ matrix.os }}-node${{ matrix.node-version }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  # Unit tests with coverage
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Setup Python (for native modules)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install setuptools (Python 3.12+ compatibility)
+        run: pip install setuptools
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run tests with coverage
+        run: pnpm run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: unittests
+          fail_ci_if_error: false
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore
+
+  # Integration tests - requires VSCode
+  # DISABLED: Integration tests require VSCode environment setup and are currently unstable
+  # Uncomment this job when integration tests are ready
+  # integration-tests:
+  #   name: Integration Tests
+  #   runs-on: ${{ matrix.os }}
+  #   strategy:
+  #     matrix:
+  #       os: [ubuntu-latest, windows-latest, macos-latest]
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20.x
+  #
+  #     - name: Setup Python (for native modules)
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.11'
+  #
+  #     - name: Install setuptools (Python 3.12+ compatibility)
+  #       run: pip install setuptools
+  #
+  #     - name: Setup pnpm
+  #       uses: pnpm/action-setup@v4
+  #       with:
+  #         version: 8
+  #         run_install: false
+  #
+  #     - name: Install dependencies (macOS)
+  #       if: runner.os == 'macOS'
+  #       env:
+  #         PYTHON: python3.11
+  #       run: pnpm install
+  #
+  #     - name: Install dependencies (Linux/Windows)
+  #       if: runner.os != 'macOS'
+  #       run: pnpm install
+  #
+  #     - name: Setup Xvfb (Linux only)
+  #       if: runner.os == 'Linux'
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y xvfb libxkbfile-dev pkg-config libsecret-1-dev libxss1 dbus xvfb libgtk-3-0 libgbm1
+  #         sudo /usr/bin/Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+  #
+  #     - name: Run integration tests (Linux)
+  #       if: runner.os == 'Linux'
+  #       env:
+  #         DISPLAY: ':99.0'
+  #       run: pnpm run test:integration
+  #
+  #     - name: Run integration tests (Windows/macOS)
+  #       if: runner.os != 'Linux'
+  #       run: pnpm run test:integration
+  #
+  #     - name: Upload test results
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: integration-test-results-${{ matrix.os }}
+  #         path: test-results/
+  #         if-no-files-found: ignore
+
+  # Build verification
+  build:
+    name: Build Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Setup Python (for native modules)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install setuptools (Python 3.12+ compatibility)
+        run: pip install setuptools
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build extension
+        run: pnpm run package
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-package
+          path: '*.vsix'
+          if-no-files-found: ignore
