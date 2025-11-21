@@ -61,11 +61,7 @@
     "commands": [
       {
         "command": "llt-assistant.generateTests",
-        "title": "Generate Tests"
-      },
-      {
-        "command": "llt-assistant.supplementTests",
-        "title": "Supplement Test Scenarios"
+        "title": "LLT: Generate Tests"
       },
       {
         "command": "llt-assistant.analyzeQuality",
@@ -196,11 +192,6 @@
         {
           "when": "editorLangId == python",
           "command": "llt-assistant.generateTests",
-          "group": "1_modification"
-        },
-        {
-          "when": "editorLangId == python && resourceFilename =~ /test_.*\\.py$/",
-          "command": "llt-assistant.supplementTests",
           "group": "1_modification"
         }
       ]

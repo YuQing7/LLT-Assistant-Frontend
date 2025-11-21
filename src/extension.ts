@@ -6,12 +6,15 @@
  */
 
 import * as vscode from 'vscode';
-import { ConfigurationManager } from './api';
+import { ConfigurationManager, BackendApiClient } from './api';
 import { UIDialogs } from './ui';
 import { CodeAnalyzer } from './utils';
-import { PythonASTAnalyzer } from './analysis';
-import { BackendAgentController, Stage1Response, UserConfirmationResult } from './agents';
-import { TestGenerationController } from './generation';
+import {
+  TestGenerationCodeLensProvider,
+  TestGenerationStatusBar,
+  GenerateTestsRequest
+} from './generation';
+import { pollTask } from './generation/async-task-poller';
 import {
 	QualityBackendClient,
 	QualityTreeProvider,
@@ -42,13 +45,21 @@ export function activate(context: vscode.ExtensionContext) {
 	console.log('LLT Assistant extension is now active');
 
 	// ===== Test Generation Feature =====
-	// Register the "Generate Tests" command
-	const generateTestsCommand = registerGenerateTestsCommand(context);
-	context.subscriptions.push(generateTestsCommand);
+	// Initialize status bar for test generation
+	const testGenStatusBar = new TestGenerationStatusBar();
+	context.subscriptions.push(testGenStatusBar);
 
-	// Register the "Supplement Tests" command
-	const supplementTestsCommand = registerSupplementTestsCommand();
-	context.subscriptions.push(supplementTestsCommand);
+	// Register CodeLens provider for Python functions
+	const codeLensProvider = new TestGenerationCodeLensProvider();
+	const codeLensDisposable = vscode.languages.registerCodeLensProvider(
+		{ language: 'python', scheme: 'file' },
+		codeLensProvider
+	);
+	context.subscriptions.push(codeLensDisposable);
+
+	// Register the "Generate Tests" command
+	const generateTestsCommand = registerGenerateTestsCommand(context, testGenStatusBar);
+	context.subscriptions.push(generateTestsCommand);
 
 	// ===== Quality Analysis Feature =====
 	// Initialize quality analysis components
@@ -369,13 +380,31 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 /**
- * Register the "Generate Tests" command
+ * Register the "Generate Tests" command (New Async Workflow)
+ *
+ * Supports two modes:
+ * 1. **New Mode** (default): Generate tests for a fresh function
+ * 2. **Regenerate Mode**: Called from Feature 3 to regenerate broken tests
+ *
  * @param context - Extension context
+ * @param statusBar - Status bar manager for progress updates
  * @returns Disposable object
  */
-function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.Disposable {
-	return vscode.commands.registerCommand('llt-assistant.generateTests', async () => {
+function registerGenerateTestsCommand(
+	context: vscode.ExtensionContext,
+	statusBar: TestGenerationStatusBar
+): vscode.Disposable {
+	return vscode.commands.registerCommand('llt-assistant.generateTests', async (args?: {
+		functionName?: string;
+		uri?: vscode.Uri;
+		line?: number;
+		mode?: 'new' | 'regenerate';
+		targetFunction?: string;
+	}) => {
 		try {
+			// Determine mode (default: 'new')
+			const mode = args?.mode || 'new';
+
 			// Get active editor
 			const editor = vscode.window.activeTextEditor;
 			if (!editor) {
@@ -391,36 +420,66 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 
 			const filePath = editor.document.uri.fsPath;
 
-			// Extract function information from current selection or cursor position
-			const functionInfo = CodeAnalyzer.extractFunctionInfo(editor);
-			if (!functionInfo) {
-				await UIDialogs.showError(
-					'Could not find a Python function. Please place your cursor inside a function or select the function code.',
-					['OK']
-				);
-				return;
+			// Step 1: Extract source code
+			let sourceCode: string;
+			let functionName: string | undefined;
+
+			if (args?.functionName || args?.targetFunction) {
+				// Called from CodeLens or Feature 3 - extract specific function
+				const functionInfo = CodeAnalyzer.extractFunctionInfo(editor);
+				if (!functionInfo) {
+					await UIDialogs.showError('Could not extract function information.');
+					return;
+				}
+				sourceCode = functionInfo.code;
+				functionName = functionInfo.name;
+			} else {
+				// Called from context menu - extract function at cursor or selection
+				const functionInfo = CodeAnalyzer.extractFunctionInfo(editor);
+				if (!functionInfo) {
+					await UIDialogs.showError(
+						'Could not find a Python function. Please place your cursor inside a function or select the function code.'
+					);
+					return;
+				}
+				sourceCode = functionInfo.code;
+				functionName = functionInfo.name;
 			}
 
 			// Validate the extracted function
-			if (!CodeAnalyzer.isValidPythonFunction(functionInfo.code)) {
-				await UIDialogs.showError(
-					'The selected text does not appear to be a valid Python function.',
-					['OK']
-				);
+			if (!CodeAnalyzer.isValidPythonFunction(sourceCode)) {
+				await UIDialogs.showError('The selected text does not appear to be a valid Python function.');
 				return;
 			}
 
-			// Get user's test description
-			const testDescription = await UIDialogs.showTestDescriptionInput();
-			if (!testDescription) {
+			// Step 2: Get user's optional test description (skip for regenerate mode)
+			let userDescription: string | undefined;
+
+			if (mode === 'new') {
+				const input = await UIDialogs.showTestDescriptionInput({
+					prompt: 'Describe your test requirements (optional - press Enter to skip)',
+					placeHolder: 'e.g., Focus on edge cases, test error handling...'
+				});
+
 				// User cancelled
-				return;
+				if (input === undefined) {
+					return;
+				}
+
+				userDescription = input || undefined;
+			} else {
+				// Regenerate mode: use default description
+				userDescription = 'Regenerate tests to fix broken coverage after code changes';
 			}
 
-			// Initialize configuration manager
-			const configManager = new ConfigurationManager();
+			// Step 3: Find existing test file
+			const existingTestFilePath = await CodeAnalyzer.findExistingTestFile(filePath);
+			const existingTestCode = existingTestFilePath
+				? await CodeAnalyzer.readFileContent(existingTestFilePath)
+				: null;
 
-			// Validate configuration
+			// Step 4: Validate configuration
+			const configManager = new ConfigurationManager();
 			const validation = configManager.validateConfiguration();
 			if (!validation.valid) {
 				await UIDialogs.showError(
@@ -430,133 +489,124 @@ function registerGenerateTestsCommand(context: vscode.ExtensionContext): vscode.
 				return;
 			}
 
-			// Initialize controllers
-			const testGenerator = new TestGenerationController();
-			const astAnalyzer = new PythonASTAnalyzer();
-
-			// Initialize backend controller
-			const backendUrl = configManager.getBackendUrl();
-			const agentController = new BackendAgentController(backendUrl);
-
-			await UIDialogs.withIncrementalProgress('Generating tests...', async (updateProgress) => {
-				try {
-					// Phase 2: Analyze function with Python AST
-					updateProgress('Analyzing function code...', 10);
-					const analysisResult = await astAnalyzer.buildFunctionContext(
-						filePath,
-						functionInfo.name
-					);
-
-					if (!analysisResult.success) {
-						throw new Error(`Failed to analyze function: ${analysisResult.error}`);
-					}
-
-					const functionContext = analysisResult.data;
-
-					// Phase 3: Run two-stage agent pipeline
-					updateProgress('Identifying test scenarios...', 30);
-					const confirmationHandler = async (stage1Response: Stage1Response): Promise<UserConfirmationResult> => {
-						// Show scenarios to user for confirmation
-						const scenarios = [
-							...stage1Response.identified_scenarios.map(s => `✓ ${s.scenario}`),
-							...stage1Response.suggested_additional_scenarios.map(s => `? ${s.scenario}`)
-						].join('\n');
-
-						const message = `${stage1Response.confirmation_question}\n\nProposed test scenarios:\n${scenarios}\n\nProceed with generation?`;
-
-						const action = await vscode.window.showInformationMessage(
-							message,
-							{ modal: true },
-							'Yes',
-							'Add More',
-							'Cancel'
-						);
-
-						if (action === 'Yes') {
-							return { confirmed: true, cancelled: false };
-						} else if (action === 'Add More') {
-							const additional = await vscode.window.showInputBox({
-								prompt: 'Enter additional test scenarios (comma-separated)',
-								placeHolder: 'e.g., test with empty input, test with special characters'
-							});
-
-							return {
-								confirmed: true,
-								cancelled: false,
-								additionalScenarios: additional || undefined
-							};
-						} else {
-							return { confirmed: false, cancelled: true };
-						}
-					};
-
-					const pipelineResult = await agentController.runFullPipeline(
-						functionContext,
-						testDescription,
-						confirmationHandler
-					);
-					updateProgress('Generating test code...', 60);
-
-					if (!pipelineResult.success) {
-						throw new Error(pipelineResult.error || 'Pipeline execution failed');
-					}
-
-					if (!pipelineResult.stage2Response) {
-						throw new Error('No test code generated');
-					}
-
-					// Phase 4: Generate and insert test code
-					updateProgress('Formatting and validating test code...', 80);
-					const generationResult = await testGenerator.generateAndInsertTests(
-						pipelineResult.stage2Response,
-						functionContext,
-						filePath
-					);
-					updateProgress('Inserting test code into file...', 95);
-
-					if (!generationResult.success) {
-						throw new Error(generationResult.error || 'Test generation failed');
-					}
-
-					// Show success message
-					const warningsText = generationResult.warnings.length > 0
-						? `\n\nWarnings:\n${generationResult.warnings.join('\n')}`
-						: '';
-
-					await UIDialogs.showSuccess(
-						`✓ Test generated successfully!\n\n` +
-						`File: ${generationResult.testFilePath}\n` +
-						`Tests: ${generationResult.parsedCode.testMethods.length}\n` +
-						`Tokens used: ${pipelineResult.totalTokens}\n` +
-						`Cost: $${pipelineResult.estimatedCost.toFixed(4)}` +
-						warningsText,
-						['OK']
-					);
-
-				} catch (error) {
-					const errorMessage = error instanceof Error ? error.message : String(error);
-					await UIDialogs.showError(`Test generation failed: ${errorMessage}`, ['OK']);
+			// Step 5: Build request payload
+			const request: GenerateTestsRequest = {
+				source_code: sourceCode,
+				user_description: userDescription,
+				existing_test_code: existingTestCode || undefined,
+				context: {
+					mode: mode,
+					target_function: functionName
 				}
+			};
+
+			// Step 6: Call backend API (async)
+			const backendUrl = configManager.getBackendUrl();
+			const backendClient = new BackendApiClient(backendUrl);
+
+			statusBar.showGenerating();
+
+			let asyncJobResponse;
+			try {
+				asyncJobResponse = await backendClient.generateTestsAsync(request);
+			} catch (error) {
+				statusBar.hide();
+				await UIDialogs.showError(
+					`Failed to start test generation: ${error instanceof Error ? error.message : String(error)}`
+				);
+				return;
+			}
+
+			// Step 7: Poll for completion with status bar updates
+			vscode.window.showInformationMessage('Test generation task started...');
+
+			const result = await pollTask(
+				{
+					baseUrl: backendUrl,
+					taskId: asyncJobResponse.task_id,
+					intervalMs: 1500,
+					timeoutMs: 60000
+				},
+				(event) => {
+					// Update status bar based on polling events
+					switch (event.type) {
+						case 'pending':
+							statusBar.showPending();
+							break;
+						case 'processing':
+							statusBar.showProcessing();
+							break;
+						case 'completed':
+							// Will be handled after polling completes
+							break;
+						case 'failed':
+							statusBar.showError(event.error);
+							break;
+						case 'timeout':
+							statusBar.showError('Timeout');
+							break;
+					}
+				}
+			).catch(error => {
+				statusBar.hide();
+				throw error;
 			});
 
+			statusBar.hide();
+
+			// Step 8: Determine target test file path
+			const path = await import('path');
+			const targetTestFilePath = existingTestFilePath || await (async () => {
+				const workspace = vscode.workspace.workspaceFolders?.[0];
+				if (!workspace) {
+					return path.join(path.dirname(filePath), `test_${path.basename(filePath)}`);
+				}
+				const testsDir = path.join(workspace.uri.fsPath, 'tests');
+				return path.join(testsDir, `test_${path.basename(filePath)}`);
+			})();
+
+			// Step 9: Show diff preview
+			const accepted = await UIDialogs.showDiffPreview(
+				'Generated Tests Preview',
+				existingTestCode || '',
+				result.generated_code,
+				targetTestFilePath
+			);
+
+			if (!accepted) {
+				vscode.window.showInformationMessage('Test generation cancelled. No changes were made.');
+				return;
+			}
+
+			// Step 10: Write to file
+			const fs = await import('fs').then(m => m.promises);
+			await fs.mkdir(path.dirname(targetTestFilePath), { recursive: true });
+			await fs.writeFile(targetTestFilePath, result.generated_code, 'utf-8');
+
+			// Step 11: Open and show the file
+			const document = await vscode.workspace.openTextDocument(targetTestFilePath);
+			await vscode.window.showTextDocument(document);
+
+			// Step 12: Show success message
+			const testCount = result.generated_code.split(/\bdef test_/).length - 1;
+			statusBar.showCompleted(testCount);
+
+			await UIDialogs.showSuccess(
+				`✓ Tests generated successfully!\n\n` +
+				`File: ${targetTestFilePath}\n` +
+				`Tests: ${testCount}\n\n` +
+				`${result.explanation}`,
+				['OK']
+			);
+
 		} catch (error) {
+			statusBar.hide();
 			console.error('Error in generateTests command:', error);
 			await UIDialogs.showError(
-				`An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}`,
+				`Test generation failed: ${error instanceof Error ? error.message : String(error)}`,
 				['OK']
 			);
 		}
-	});
-}
-
-/**
- * Register the "Supplement Tests" command
- * @returns Disposable object
- */
-function registerSupplementTestsCommand(): vscode.Disposable {
-	return vscode.commands.registerCommand('llt-assistant.supplementTests', async () => {
-		const { executeSupplementTestsCommand } = await import('./commands/supplement-tests.js');
-		await executeSupplementTestsCommand();
 	});
 }
 

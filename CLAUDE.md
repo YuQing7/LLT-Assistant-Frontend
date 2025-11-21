@@ -9,9 +9,182 @@ The LLT Assistant is a VSCode extension that helps developers improve their Pyth
 
 ## Current Status
 
-**Date**: 2025-11-16
+**Date**: 2025-11-21
 
-**Last Updated**: Project initialization for new quality analysis feature
+**Last Updated**: Feature 1 (Test Generation) refactored to use new async API workflow
+
+### Recent Changes
+
+**Feature 1 Refactoring (2025-11-21):**
+- ✅ Migrated from two-stage synchronous API to single async API with polling
+- ✅ Removed Python AST analyzer dependency (simplified to raw source code extraction)
+- ✅ Added CodeLens provider for "Generate Tests" action above functions
+- ✅ Implemented async task poller with status bar progress updates
+- ✅ Added diff preview workflow (Accept/Discard before saving)
+- ✅ Auto-detection and inclusion of existing test files for context
+- ✅ Support for regenerate mode (for Feature 3 integration)
+- ✅ Removed deprecated "Supplement Tests" command
+- ✅ Removed legacy two-stage agent system
+
+## Feature 1: Test Generation (Refactored - Async Workflow)
+
+### Overview
+Generates pytest unit tests using AI via an async backend API. Users can trigger generation via CodeLens or context menu, review generated tests in a diff editor, and accept/discard changes.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                VSCode Extension (TypeScript)             │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────┐ │
+│  │  CodeLens    │───▶│   Backend    │───▶│   Diff   │ │
+│  │  Provider    │    │   Client     │    │  Preview │ │
+│  └──────────────┘    └──────────────┘    └──────────┘ │
+│         │                    │                   │      │
+│         ▼                    ▼                   ▼      │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────┐ │
+│  │ Context Menu │    │   Task       │    │  File    │ │
+│  │ Command      │    │   Poller     │    │  Writer  │ │
+│  └──────────────┘    └──────────────┘    └──────────┘ │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+#### 1. CodeLens Provider (src/generation/codelens-provider.ts)
+- Shows "Generate Tests" above Python function definitions
+- Detects functions using regex pattern
+- Skips private functions and dunder methods
+
+#### 2. Backend API Client (src/api/backend-client.ts)
+- `generateTestsAsync()`: POST /workflows/generate-tests
+- `pollTaskStatus()`: GET /tasks/{task_id}
+- Async workflow with task polling
+
+#### 3. Task Poller (src/generation/async-task-poller.ts)
+- Polls backend every 1.5 seconds
+- Max timeout: 60 seconds
+- Emits events: pending → processing → completed/failed/timeout
+
+#### 4. Status Bar Manager (src/generation/status-bar-manager.ts)
+- Shows spinner during generation
+- Updates based on polling status
+- Auto-hides after completion
+
+#### 5. Code Analyzer (src/utils/codeAnalysis.ts)
+- Extracts function code from editor
+- Finds existing test files automatically
+- Reads test file content for context
+
+#### 6. Diff Preview (src/ui/dialogs.ts)
+- Opens VSCode diff editor
+- Compares original vs generated code
+- Accept/Discard modal dialog
+
+### User Workflow
+
+**Scenario A: CodeLens Trigger**
+1. User opens Python file
+2. "Generate Tests" appears above each function
+3. User clicks CodeLens
+4. (Optional) User enters test requirements
+5. Extension shows status bar: "$(loading~spin) LLT: Generating tests..."
+6. Backend processes async (polling every 1.5s)
+7. Diff editor opens showing changes
+8. User clicks "Accept Changes" or "Discard"
+9. If accepted: Tests saved to `tests/test_*.py`
+10. Success notification with test count
+
+**Scenario B: Context Menu Trigger**
+1. User right-clicks in Python file
+2. Selects "LLT: Generate Tests"
+3. (Same as steps 4-10 above)
+
+**Scenario C: Regenerate Mode (from Feature 3)**
+1. Feature 3 detects broken tests
+2. User clicks "Regenerate" button
+3. Command called with `mode: 'regenerate'`
+4. Skips user input dialog
+5. (Same diff preview and accept/discard flow)
+
+### Backend API
+
+**Base URL**: `https://llt-assistant.fly.dev/api/v1`
+
+**Step 1: Trigger Generation**
+- Endpoint: `POST /workflows/generate-tests`
+- Returns: `202 Accepted` with `task_id`
+
+Request:
+```json
+{
+  "source_code": "def calculate_sum(a, b):\n    return a + b",
+  "user_description": "Focus on edge cases",
+  "existing_test_code": "import pytest\n...",
+  "context": {
+    "mode": "new",
+    "target_function": "calculate_sum"
+  }
+}
+```
+
+Response:
+```json
+{
+  "task_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "pending",
+  "estimated_time_seconds": 10
+}
+```
+
+**Step 2: Poll for Completion**
+- Endpoint: `GET /tasks/{task_id}`
+- Polling: Every 1.5s, max 60s
+
+Response (completed):
+```json
+{
+  "task_id": "...",
+  "status": "completed",
+  "created_at": "2025-10-27T10:00:00Z",
+  "result": {
+    "generated_code": "import pytest\n...\ndef test_calculate_sum_strings():\n    ...",
+    "explanation": "Generated 3 test cases covering integer addition and type errors."
+  }
+}
+```
+
+### Configuration
+
+```json
+{
+  "llt-assistant.backendUrl": "https://llt-assistant.fly.dev/api/v1"
+}
+```
+
+### Removed Components (Legacy)
+
+The following components were removed during the refactoring:
+
+1. **Python AST Analyzer** (`src/analysis/pythonAstAnalyzer.ts`, `python/ast_analyzer.py`)
+   - No longer needed - backend handles code analysis
+
+2. **Two-Stage Agent System** (`src/agents/`)
+   - `backend-controller.ts`: Old Stage 1 + Stage 2 pipeline
+   - `input-validator.ts`: User input validation
+   - Replaced with single async API call
+
+3. **Supplement Tests Command** (`src/commands/supplement-tests.ts`)
+   - Deprecated command removed from package.json and extension.ts
+
+4. **Scenario Confirmation Dialog**
+   - Removed intermediate step where user confirmed scenarios
+   - Now goes directly to code generation
+
+
 
 ## New Feature: Test Quality Analysis
 

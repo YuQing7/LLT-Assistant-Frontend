@@ -1,12 +1,18 @@
 /**
- * Phase 4 - Test Code Generation Module
+ * Test Code Generation Module
  *
  * Exports all functionality for parsing, validating, formatting,
- * and inserting generated test code.
+ * inserting generated test code, and CodeLens integration.
  */
 
 // Main controller
 export { TestGenerationController } from './test-generator';
+
+// CodeLens provider
+export { TestGenerationCodeLensProvider } from './codelens-provider';
+
+// Status bar manager
+export { TestGenerationStatusBar } from './status-bar-manager';
 
 // Code generation utilities
 export {

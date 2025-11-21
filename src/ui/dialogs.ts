@@ -189,6 +189,47 @@ export class UIDialogs {
   }
 
   /**
+   * Show diff preview with Accept/Discard options
+   *
+   * Opens a diff editor comparing original content with generated content,
+   * then prompts user to accept or discard changes.
+   *
+   * @param title - Title for the diff editor
+   * @param originalContent - Original file content (empty string for new files)
+   * @param generatedContent - Generated test code
+   * @param targetFilePath - Path where the file will be saved
+   * @returns Promise<boolean> - true if user accepts, false if discarded
+   */
+  public static async showDiffPreview(
+    title: string,
+    originalContent: string,
+    generatedContent: string,
+    targetFilePath: string
+  ): Promise<boolean> {
+    // Create temporary documents for diff view
+    const originalUri = vscode.Uri.parse(`untitled:Original`);
+    const generatedUri = vscode.Uri.parse(`untitled:Generated`);
+
+    // Open diff editor
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      originalUri.with({ fragment: originalContent }),
+      generatedUri.with({ fragment: generatedContent }),
+      title
+    );
+
+    // Prompt user for action
+    const action = await vscode.window.showInformationMessage(
+      `Review the generated tests. Accept changes to save to ${targetFilePath}?`,
+      { modal: true },
+      'Accept Changes',
+      'Discard'
+    );
+
+    return action === 'Accept Changes';
+  }
+
+  /**
    * Show error message to the user
    * @param message - Error message to display
    * @param actions - Optional action buttons

@@ -7,18 +7,15 @@ import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import * as path from 'path';
 import { CodeChange } from '../models/types';
-import { PythonASTAnalyzer } from '../../analysis';
 
 /**
  * Git Diff Extractor class
  */
 export class GitDiffExtractor {
 	private workspaceRoot: string;
-	private astAnalyzer: PythonASTAnalyzer;
 
 	constructor(workspaceRoot: string) {
 		this.workspaceRoot = workspaceRoot;
-		this.astAnalyzer = new PythonASTAnalyzer();
 	}
 
 	/**

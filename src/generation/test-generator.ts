@@ -3,11 +3,14 @@
  *
  * Main orchestrator for Phase 4 - Test Code Generation
  * Coordinates parsing, validation, formatting, and insertion of test code.
+ *
+ * NOTE: This controller is used by the legacy two-stage workflow and by
+ * Feature 3 (Impact Analysis). The new async workflow in extension.ts
+ * writes files directly without using this controller.
  */
 
 import * as vscode from 'vscode';
 import { FunctionContext } from '../analysis/types';
-import { Stage2Response } from '../agents/types';
 import {
   TestGenerationResult,
   GenerationPipelineOptions,
@@ -17,6 +20,20 @@ import {
   ValidationResult,
   DependencyCheck
 } from './types';
+
+/**
+ * Response from Stage 2 (code generation)
+ * NOTE: This interface is kept for backward compatibility with Feature 3.
+ * The new async workflow uses GenerateTestsResult instead.
+ */
+export interface Stage2Response {
+  test_code: string;
+  imports: string[];
+  test_count: number;
+  coverage_summary: string;
+  notes?: string;
+}
+
 import {
   parseGeneratedTests,
   generateImports,

@@ -203,4 +203,71 @@ export class CodeAnalyzer {
     // Check if it starts with 'def ' and contains '(' and ':'
     return /^\s*def\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\([^)]*\)\s*(->\s*[^:]+)?\s*:/.test(trimmed);
   }
+
+  /**
+   * Find existing test file for a given source file
+   *
+   * Searches for test files in common patterns:
+   * - tests/test_*.py
+   * - test/test_*.py
+   * - src/tests/test_*.py
+   * - Same directory as source file
+   *
+   * @param sourceFilePath - Absolute path to the source Python file
+   * @returns Absolute path to test file if found, null otherwise
+   */
+  public static async findExistingTestFile(sourceFilePath: string): Promise<string | null> {
+    const path = await import('path');
+    const fs = await import('fs').then(m => m.promises);
+
+    // Extract filename without extension
+    const basename = path.basename(sourceFilePath, '.py');
+    const dirname = path.dirname(sourceFilePath);
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+
+    if (!workspaceFolder) {
+      return null;
+    }
+
+    const workspaceRoot = workspaceFolder.uri.fsPath;
+
+    // Define search patterns in order of preference
+    const patterns = [
+      path.join(workspaceRoot, 'tests', `test_${basename}.py`),
+      path.join(workspaceRoot, 'test', `test_${basename}.py`),
+      path.join(workspaceRoot, 'src', 'tests', `test_${basename}.py`),
+      path.join(dirname, `test_${basename}.py`)
+    ];
+
+    // Try each pattern
+    for (const testPath of patterns) {
+      try {
+        const stats = await fs.stat(testPath);
+        if (stats.isFile()) {
+          return testPath;
+        }
+      } catch (error) {
+        // File doesn't exist, continue to next pattern
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Read file content as string
+   *
+   * @param filePath - Absolute path to file
+   * @returns File content or null if file doesn't exist
+   */
+  public static async readFileContent(filePath: string): Promise<string | null> {
+    try {
+      const fs = await import('fs').then(m => m.promises);
+      const content = await fs.readFile(filePath, 'utf-8');
+      return content;
+    } catch (error) {
+      return null;
+    }
+  }
 }

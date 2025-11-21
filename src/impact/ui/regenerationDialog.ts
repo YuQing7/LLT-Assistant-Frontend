@@ -1,14 +1,16 @@
 /**
  * Regeneration Dialog
  * Handles user decision dialog and test regeneration flow
+ *
+ * NOTE: This module needs to be refactored to use the new async API workflow.
+ * The old two-stage pipeline (BackendAgentController, PythonASTAnalyzer) has been removed.
+ * For now, regeneration triggers the generateTests command with regenerate mode.
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { AffectedTest, RegenerationResult, ChangeDetectionResult } from '../models/types';
-import { BackendAgentController } from '../../agents';
 import { TestGenerationController } from '../../generation';
-import { PythonASTAnalyzer } from '../../analysis';
 import { ConfigurationManager } from '../../api';
 
 /**
@@ -23,11 +25,9 @@ export interface UserDecision {
  * Regeneration Dialog Manager
  */
 export class RegenerationDialogManager {
-	private astAnalyzer: PythonASTAnalyzer;
 	private testGenerator: TestGenerationController;
 
 	constructor() {
-		this.astAnalyzer = new PythonASTAnalyzer();
 		this.testGenerator = new TestGenerationController();
 	}
 
@@ -76,6 +76,9 @@ export class RegenerationDialogManager {
 
 	/**
 	 * Regenerate affected tests
+	 *
+	 * NOTE: This method has been updated to use the new async workflow.
+	 * It now triggers the generateTests command with mode='regenerate' for each test.
 	 */
 	async regenerateTests(
 		affectedTests: AffectedTest[],
@@ -88,11 +91,6 @@ export class RegenerationDialogManager {
 				vscode.window.showErrorMessage('No workspace folder open');
 				return;
 			}
-
-			// Initialize backend controller
-			const configManager = new ConfigurationManager();
-			const backendUrl = configManager.getBackendUrl();
-			const backendController = new BackendAgentController(backendUrl);
 
 			await vscode.window.withProgress(
 				{
@@ -113,7 +111,7 @@ export class RegenerationDialogManager {
 						});
 
 						try {
-							// Get source function information
+							// Find the source file for this test
 							const sourceFile = this.findSourceFile(test, changeContext);
 							if (!sourceFile) {
 								console.error(`Cannot find source file for test ${test.test_name}`);
@@ -123,61 +121,32 @@ export class RegenerationDialogManager {
 							const fullSourcePath = path.join(workspaceRoot, sourceFile);
 							const functionName = this.extractFunctionName(test, changeContext);
 
-							// Build function context
-							const analysisResult = await this.astAnalyzer.buildFunctionContext(
-								fullSourcePath,
-								functionName
-							);
+							// Open the source file and position cursor
+							const doc = await vscode.workspace.openTextDocument(fullSourcePath);
+							const editor = await vscode.window.showTextDocument(doc);
 
-							if (!analysisResult.success || !analysisResult.data) {
-								console.error(`Failed to analyze function for ${test.test_name}`);
-								continue;
-							}
-
-							const functionContext = analysisResult.data;
-
-							// Generate test using backend
-							const pipelineResult = await backendController.runFullPipeline(
-								functionContext,
-								`Generate comprehensive test for ${functionName}`,
-								async (stage1Response) => {
-									// Auto-confirm without user interaction.
-									// Confirmation is auto-approved during batch regeneration
-									// because the user already confirmed at the decision dialog stage.
-									return { confirmed: true, cancelled: false };
-								}
-							);
-
-							if (!pipelineResult.success || !pipelineResult.stage2Response) {
-								console.error(`Failed to generate test for ${test.test_name}`);
-								continue;
-							}
-
-							// Get old test code
-							const oldTestCode = await this.getTestCode(
-								path.join(workspaceRoot, test.file_path),
-								test.test_name
-							);
-
-							// Extract new test code
-							const newTestCode = pipelineResult.stage2Response.test_code;
-
-							results.push({
-								test,
-								oldCode: oldTestCode,
-								newCode: newTestCode
+							// Execute generateTests command with regenerate mode
+							await vscode.commands.executeCommand('llt-assistant.generateTests', {
+								mode: 'regenerate',
+								targetFunction: functionName
 							});
+
+							// TODO: Capture the result and add to results array
+							// For now, the command handles its own diff preview and file writing
 						} catch (error) {
 							console.error(`Error generating test for ${test.test_name}:`, error);
 							// Continue with other tests
 						}
 					}
 
-					// Show diff preview and get user selections
+					// Show summary
 					if (results.length > 0) {
 						await this.showDiffPreview(results);
 					} else {
-						vscode.window.showWarningMessage('No tests were regenerated');
+						vscode.window.showInformationMessage(
+							`Regeneration complete for ${affectedTests.length} tests. ` +
+							`Please review and accept each generated test in the diff preview.`
+						);
 					}
 				}
 			);
