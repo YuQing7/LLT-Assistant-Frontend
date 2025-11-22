@@ -11,7 +11,8 @@ import {
 	CoverageStats,
 	UncoveredFunction,
 	PartiallyCoveredFunction,
-	BranchInfo
+	BranchInfo,
+	UncoveredRange
 } from '../api/types';
 import { ParserOptions } from './types';
 
@@ -304,6 +305,91 @@ export class CoverageXmlParser {
 
 		groups.push(currentGroup);
 		return groups;
+	}
+
+	/**
+	 * Extract uncovered ranges from XML content for a specific file
+	 * Returns UncoveredRange[] format suitable for optimization API
+	 *
+	 * @param classContent - XML content for a single class/file
+	 * @returns Array of uncovered ranges (lines and branches)
+	 */
+	extractUncoveredRanges(classContent: string): UncoveredRange[] {
+		const ranges: UncoveredRange[] = [];
+		const lineData = this.extractLineData(classContent);
+
+		// Extract uncovered lines (hits = 0)
+		const uncoveredLines = lineData.lines
+			.filter(l => l.hits === 0)
+			.map(l => l.number)
+			.sort((a, b) => a - b);
+
+		// Group consecutive uncovered lines into ranges
+		if (uncoveredLines.length > 0) {
+			const lineRanges = this.groupConsecutiveLines(uncoveredLines);
+			for (const range of lineRanges) {
+				ranges.push({
+					start_line: range.start,
+					end_line: range.end,
+					type: 'line'
+				});
+			}
+		}
+
+		// Extract uncovered branches (branch=true and missing-branches exists)
+		const uncoveredBranches = lineData.lines
+			.filter(l => l.branch && l.missingBranches)
+			.map(l => l.number)
+			.sort((a, b) => a - b);
+
+		// Group consecutive uncovered branches into ranges
+		if (uncoveredBranches.length > 0) {
+			const branchRanges = this.groupConsecutiveLines(uncoveredBranches);
+			for (const range of branchRanges) {
+				ranges.push({
+					start_line: range.start,
+					end_line: range.end,
+					type: 'branch'
+				});
+			}
+		}
+
+		return ranges;
+	}
+
+	/**
+	 * Group consecutive line numbers into ranges
+	 * Allows gaps of up to 1 line between consecutive numbers
+	 *
+	 * @param lines - Sorted array of line numbers
+	 * @returns Array of {start, end} ranges
+	 */
+	private groupConsecutiveLines(lines: number[]): Array<{ start: number; end: number }> {
+		if (lines.length === 0) {
+			return [];
+		}
+
+		const ranges: Array<{ start: number; end: number }> = [];
+		let rangeStart = lines[0];
+		let rangeEnd = lines[0];
+
+		for (let i = 1; i < lines.length; i++) {
+			const currentLine = lines[i];
+			// Allow gap of 1 line (consecutive or adjacent)
+			if (currentLine - rangeEnd <= 2) {
+				rangeEnd = currentLine;
+			} else {
+				// End current range and start new one
+				ranges.push({ start: rangeStart, end: rangeEnd });
+				rangeStart = currentLine;
+				rangeEnd = currentLine;
+			}
+		}
+
+		// Add final range
+		ranges.push({ start: rangeStart, end: rangeEnd });
+
+		return ranges;
 	}
 }
 
