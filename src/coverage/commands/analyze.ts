@@ -385,14 +385,26 @@ export class CoverageCommands {
 			.map(test => test.test_code)
 			.join('\n\n');
 
-		// Show preview for the first test (or combined)
+		// Combine scenario descriptions and coverage impacts
+		const scenarioDescriptions = recommendedTests
+			.map(t => t.scenario_description)
+			.filter(Boolean)
+			.join('; ');
+		const coverageImpacts = recommendedTests
+			.map(t => t.expected_coverage_impact)
+			.filter(Boolean)
+			.join('; ');
+
+		// Show preview for all recommended tests
 		await previewManager.showPreview(
 			editor,
 			position,
 			combinedTestCode,
 			{
 				functionName: 'coverage_test',
-				explanation: recommendedTests.map(t => t.scenario_description).join('; ')
+				explanation: scenarioDescriptions,
+				scenarioDescription: scenarioDescriptions,
+				expectedCoverageImpact: coverageImpacts
 			}
 		);
 	}

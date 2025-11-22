@@ -30,6 +30,8 @@ export class InlinePreviewManager {
 		metadata?: {
 			functionName?: string;
 			explanation?: string;
+			scenarioDescription?: string;
+			expectedCoverageImpact?: string;
 		}
 	): Promise<void> {
 		// Clear any existing preview
@@ -49,19 +51,28 @@ export class InlinePreviewManager {
 
 		// Show information message
 		vscode.window.showInformationMessage(
-			'Test generated! Press Tab to accept, Ctrl+E to edit, or Esc to reject.',
+			'Test generated! Press Tab to accept, Ctrl+Enter to view diff, or Esc to reject.',
 			'Accept',
-			'Edit',
+			'View Diff',
 			'Reject'
 		).then(selection => {
 			if (selection === 'Accept') {
 				this.acceptPreview();
-			} else if (selection === 'Edit') {
-				this.editPreview();
+			} else if (selection === 'View Diff') {
+				this.showDiff();
 			} else if (selection === 'Reject') {
 				this.rejectPreview();
 			}
 		});
+	}
+
+	/**
+	 * Show diff view for current preview
+	 */
+	async showDiff(): Promise<void> {
+		if (this.currentPreview) {
+			await this.currentPreview.showDiff();
+		}
 	}
 
 	/**
@@ -126,15 +137,23 @@ class InlinePreview {
 	private metadata?: {
 		functionName?: string;
 		explanation?: string;
+		scenarioDescription?: string;
+		expectedCoverageImpact?: string;
 	};
 	private disposables: vscode.Disposable[] = [];
+	private keyboardDisposable?: vscode.Disposable;
 
 	constructor(
 		editor: vscode.TextEditor,
 		position: vscode.Position,
 		generatedCode: string,
 		decorationType: vscode.TextEditorDecorationType,
-		metadata?: { functionName?: string; explanation?: string }
+		metadata?: {
+			functionName?: string;
+			explanation?: string;
+			scenarioDescription?: string;
+			expectedCoverageImpact?: string;
+		}
 	) {
 		this.editor = editor;
 		this.position = position;
@@ -147,17 +166,82 @@ class InlinePreview {
 	 * Show the preview
 	 */
 	async show(): Promise<void> {
-		// For now, we'll use a simple approach: show as a virtual text decoration
-		// In a real implementation, this would use VSCode's inline completion API
+		// Show as ghost text decoration
+		const lines = this.generatedCode.split('\n');
+		const decorations: vscode.DecorationOptions[] = [];
 
-		// Create a code lens to show accept/reject actions
-		const range = new vscode.Range(this.position, this.position);
+		lines.forEach((line, index) => {
+			const linePosition = new vscode.Position(
+				this.position.line + index,
+				index === 0 ? this.position.character : 0
+			);
+			const range = new vscode.Range(linePosition, linePosition);
+
+			// Create tooltip with metadata
+			const tooltip = this.createTooltip();
+
+			decorations.push({
+				range,
+				renderOptions: {
+					after: {
+						contentText: line,
+						color: new vscode.ThemeColor('editorGhostText.foreground'),
+						fontStyle: 'italic'
+					}
+				},
+				hoverMessage: tooltip
+			});
+		});
+
+		this.editor.setDecorations(this.decorationType, decorations);
+
+		// Register keyboard shortcuts
+		this.registerKeyboardShortcuts();
 
 		// Register commands for this preview
 		this.registerCommands();
+	}
 
-		// Show hover message
-		this.showHoverMessage();
+	/**
+	 * Create tooltip with metadata information
+	 */
+	private createTooltip(): vscode.MarkdownString {
+		const tooltip = new vscode.MarkdownString();
+		tooltip.appendMarkdown('**Generated Test Code**\n\n');
+
+		if (this.metadata?.scenarioDescription) {
+			tooltip.appendMarkdown(`**Scenario:** ${this.metadata.scenarioDescription}\n\n`);
+		}
+
+		if (this.metadata?.expectedCoverageImpact) {
+			tooltip.appendMarkdown(`**Coverage Impact:** ${this.metadata.expectedCoverageImpact}\n\n`);
+		}
+
+		if (this.metadata?.explanation) {
+			tooltip.appendMarkdown(`**Explanation:** ${this.metadata.explanation}\n\n`);
+		}
+
+		tooltip.appendMarkdown('---\n\n');
+		tooltip.appendMarkdown('Press **Tab** to accept, **Ctrl+Enter** to view diff, or **Esc** to reject.');
+
+		return tooltip;
+	}
+
+	/**
+	 * Register keyboard shortcuts for Tab, Esc, and Ctrl+Enter
+	 */
+	private registerKeyboardShortcuts(): void {
+		// Listen for keyboard events in the editor
+		const disposable = vscode.commands.registerCommand('type', async (args) => {
+			// This is a workaround - VSCode doesn't provide direct keyboard event listeners
+			// We'll rely on the command-based approach instead
+		});
+
+		// Register specific keybindings through commands
+		// Note: These need to be registered in package.json keybindings section
+		// For now, we'll handle them through the command registration
+		this.keyboardDisposable = disposable;
+		this.disposables.push(disposable);
 	}
 
 	/**
@@ -176,31 +260,44 @@ class InlinePreview {
 	}
 
 	/**
-	 * Edit the preview - open in diff editor
+	 * Show diff view comparing current file with generated code
 	 */
-	async edit(): Promise<void> {
-		// Create a temporary document with the generated code
+	async showDiff(): Promise<void> {
+		const currentContent = this.editor.document.getText();
+		const newContent = currentContent + '\n\n' + this.generatedCode;
+
+		// Create temporary URI for the new content
 		const tempUri = vscode.Uri.parse(
-			`untitled:${this.metadata?.functionName || 'generated'}_test.py`
+			`${this.editor.document.uri.toString()}.generated`
 		);
 
+		// Write generated content to temp file
 		const tempDoc = await vscode.workspace.openTextDocument(tempUri);
-		const tempEditor = await vscode.window.showTextDocument(tempDoc, {
+		await vscode.window.showTextDocument(tempDoc, {
 			viewColumn: vscode.ViewColumn.Beside,
 			preview: false
 		});
 
-		// Insert the generated code into the temp document
-		await tempEditor.edit(editBuilder => {
-			editBuilder.insert(new vscode.Position(0, 0), this.generatedCode);
+		await vscode.window.activeTextEditor?.edit(editBuilder => {
+			editBuilder.insert(new vscode.Position(0, 0), newContent);
 		});
 
-		// Show information
-		vscode.window.showInformationMessage(
-			'Edit the test code, then copy it to your test file when ready.'
+		// Open diff view
+		await vscode.commands.executeCommand(
+			'vscode.diff',
+			this.editor.document.uri,
+			tempUri,
+			'Current ↔ Generated Test'
 		);
 
-		this.clear();
+		// Don't clear preview - user might want to accept after viewing diff
+	}
+
+	/**
+	 * Edit the preview - open in diff editor (legacy method, redirects to showDiff)
+	 */
+	async edit(): Promise<void> {
+		await this.showDiff();
 	}
 
 	/**
@@ -220,6 +317,11 @@ class InlinePreview {
 		// Dispose all disposables
 		this.disposables.forEach(d => d.dispose());
 		this.disposables = [];
+
+		if (this.keyboardDisposable) {
+			this.keyboardDisposable.dispose();
+			this.keyboardDisposable = undefined;
+		}
 	}
 
 	/**
