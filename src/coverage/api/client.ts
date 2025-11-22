@@ -5,10 +5,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import * as vscode from 'vscode';
 import {
-	GenerateCoverageTestRequest,
-	GenerateCoverageTestResponse,
-	BatchGenerateCoverageTestRequest,
-	BatchGenerateCoverageTestResponse,
 	CoverageBackendError
 } from './types';
 
@@ -71,100 +67,6 @@ export class CoverageBackendClient {
 				return Promise.reject(this.handleApiError(error));
 			}
 		);
-	}
-
-	/**
-	 * Generate tests for a specific uncovered function
-	 *
-	 * POST /workflows/generate-coverage-test
-	 */
-	async generateCoverageTest(
-		request: GenerateCoverageTestRequest
-	): Promise<GenerateCoverageTestResponse> {
-		const maxRetries = DEFAULTS.RETRY_MAX_ATTEMPTS;
-		let lastError: any;
-
-		for (let attempt = 0; attempt < maxRetries; attempt++) {
-			try {
-				const response = await this.client.post<GenerateCoverageTestResponse>(
-					'/workflows/generate-coverage-test',
-					request
-				);
-
-				return response.data;
-			} catch (error) {
-				lastError = error;
-
-				// Check if error is retryable
-				if (!this.isRetryableError(error)) {
-					throw error;
-				}
-
-				// Don't retry on last attempt
-				if (attempt === maxRetries - 1) {
-					break;
-				}
-
-				// Exponential backoff: 2s, 4s, 8s
-				const delayMs = Math.pow(2, attempt) * DEFAULTS.RETRY_BASE_DELAY_MS;
-				console.log(
-					`[LLT Coverage API] Retry attempt ${attempt + 1}/${maxRetries} after ${delayMs}ms`
-				);
-				await this.delay(delayMs);
-			}
-		}
-
-		throw lastError;
-	}
-
-	/**
-	 * Batch generate tests for multiple functions
-	 *
-	 * POST /workflows/batch-generate-coverage-tests
-	 */
-	async batchGenerateCoverageTests(
-		request: BatchGenerateCoverageTestRequest
-	): Promise<BatchGenerateCoverageTestResponse> {
-		const maxRetries = DEFAULTS.RETRY_MAX_ATTEMPTS;
-		let lastError: any;
-
-		// Use longer timeout for batch operations
-		const originalTimeout = this.client.defaults.timeout;
-		this.client.defaults.timeout = 120000; // 2 minutes
-
-		try {
-			for (let attempt = 0; attempt < maxRetries; attempt++) {
-				try {
-					const response = await this.client.post<BatchGenerateCoverageTestResponse>(
-						'/workflows/batch-generate-coverage-tests',
-						request
-					);
-
-					return response.data;
-				} catch (error) {
-					lastError = error;
-
-					if (!this.isRetryableError(error)) {
-						throw error;
-					}
-
-					if (attempt === maxRetries - 1) {
-						break;
-					}
-
-					const delayMs = Math.pow(2, attempt) * DEFAULTS.RETRY_BASE_DELAY_MS;
-					console.log(
-						`[LLT Coverage API] Batch retry attempt ${attempt + 1}/${maxRetries} after ${delayMs}ms`
-					);
-					await this.delay(delayMs);
-				}
-			}
-
-			throw lastError;
-		} finally {
-			// Restore original timeout
-			this.client.defaults.timeout = originalTimeout;
-		}
 	}
 
 	/**

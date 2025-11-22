@@ -71,48 +71,6 @@ export interface CoverageReport {
 }
 
 /**
- * Request to generate coverage tests for a specific function
- */
-export interface GenerateCoverageTestRequest {
-	filePath: string;
-	functionName: string;
-	functionCode: string;
-	uncoveredBranches?: BranchInfo[];
-	existingTests?: string;
-	context?: {
-		imports?: string;
-		relatedClasses?: string;
-		fixtures?: string;
-	};
-}
-
-/**
- * Response from coverage test generation
- */
-export interface GenerateCoverageTestResponse {
-	generatedTests: string;
-	explanation: string;
-	targetCoverage?: number;
-	coveredBranches?: string[];
-}
-
-/**
- * Batch request to generate tests for multiple functions
- */
-export interface BatchGenerateCoverageTestRequest {
-	requests: GenerateCoverageTestRequest[];
-}
-
-/**
- * Batch response for multiple test generations
- */
-export interface BatchGenerateCoverageTestResponse {
-	results: GenerateCoverageTestResponse[];
-	totalGenerated: number;
-	failures?: string[];
-}
-
-/**
  * Coverage comparison result
  */
 export interface CoverageComparison {
