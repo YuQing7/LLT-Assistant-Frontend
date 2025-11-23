@@ -1,11 +1,8 @@
 /**
  * Analysis module exports
  *
- * Provides Python AST analysis and context building for test generation
+ * Provides context building utilities for test generation
  */
-
-// Main analyzer
-export { PythonASTAnalyzer, AnalysisResult } from './pythonAstAnalyzer';
 
 // Context builder
 export {
