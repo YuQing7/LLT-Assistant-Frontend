@@ -1,13 +1,91 @@
 /**
- * Type definitions for Phase 4 - Test Code Generation
+ * Type definitions for Test Generation
  *
  * This module defines interfaces and types for:
+ * - Backend API request/response types (async workflow)
  * - Parsing LLM-generated test code
  * - Code insertion and file operations
  * - Validation and error handling
  */
 
-import { FunctionContext } from '../analysis/types';
+// ============================================================================
+// Backend API Types (Async Workflow)
+// ============================================================================
+
+/**
+ * Request payload for POST /workflows/generate-tests
+ */
+export interface GenerateTestsRequest {
+  /** The Python source code to test */
+  source_code: string;
+
+  /** Optional hint or requirement from user */
+  user_description?: string;
+
+  /** Optional existing test code (context for regeneration) */
+  existing_test_code?: string;
+
+  /** Extra context if triggered by Feature 3 (Regeneration) */
+  context?: {
+    /** Mode: 'new' for fresh generation, 'regenerate' for fixing broken tests */
+    mode: 'new' | 'regenerate';
+
+    /** Target function to focus on */
+    target_function?: string;
+  };
+}
+
+/**
+ * Response for POST /workflows/generate-tests (202 Accepted)
+ */
+export interface AsyncJobResponse {
+  /** Unique task identifier for polling */
+  task_id: string;
+
+  /** Initial status (always 'pending' or 'processing' in 202 response) */
+  status: 'pending' | 'processing';
+
+  /** Estimated completion time in seconds */
+  estimated_time_seconds?: number;
+}
+
+/**
+ * Response for GET /tasks/{task_id} - polling endpoint
+ */
+export interface TaskStatusResponse {
+  /** Task identifier */
+  task_id: string;
+
+  /** Current status of the task */
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+
+  /** Task creation timestamp */
+  created_at?: string;
+
+  /** Result payload (only present when status is 'completed') */
+  result?: GenerateTestsResult;
+
+  /** Error information (only present when status is 'failed') */
+  error?: {
+    message: string;
+    code?: string;
+  };
+}
+
+/**
+ * Result payload when task status is 'completed'
+ */
+export interface GenerateTestsResult {
+  /** Generated pytest code */
+  generated_code: string;
+
+  /** Explanation of what was generated */
+  explanation: string;
+}
+
+// ============================================================================
+// Code Parsing and Insertion Types
+// ============================================================================
 
 /**
  * A single test method extracted from generated code
