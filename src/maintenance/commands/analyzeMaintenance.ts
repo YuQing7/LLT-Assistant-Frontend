@@ -47,59 +47,129 @@ export class AnalyzeMaintenanceCommand {
 						// Step 1: Check backend health
 						progress.report({ message: 'Checking backend connection...', increment: 10 });
 						try {
-							const isHealthy = await this.client.checkHealth();
-							if (!isHealthy) {
-								const action = await vscode.window.showWarningMessage(
-									'Backend is not responding. Please check your connection and backend URL.',
-									'Retry',
-									'Open Settings'
-								);
-								
-								if (action === 'Retry') {
-									// Retry health check
-									const retryHealthy = await this.client.checkHealth();
-									if (!retryHealthy) {
-										return;
-									}
-								} else if (action === 'Open Settings') {
-									vscode.commands.executeCommand('workbench.action.openSettings', 'llt-assistant.maintenance.backendUrl');
-									return;
-								} else {
-									return;
-								}
-							}
-						} catch (error) {
-							const action = await vscode.window.showErrorMessage(
-								`Failed to connect to backend: ${error instanceof Error ? error.message : String(error)}`,
+						const isHealthy = await this.client.checkHealth();
+						if (!isHealthy) {
+							// Health check failed, but allow user to continue anyway
+							// (backend might not have /health endpoint but other APIs work)
+							const action = await vscode.window.showWarningMessage(
+								'Backend health check failed (this may be normal if /health endpoint is not implemented). Continue anyway?',
+								'Continue',
 								'Retry',
-								'Open Settings'
+								'Open Settings',
+								'Cancel'
 							);
 							
-							if (action === 'Retry') {
-								await this.execute();
+							if (action === 'Cancel') {
+								return;
+							} else if (action === 'Retry') {
+								// Retry health check
+								const retryHealthy = await this.client.checkHealth();
+								if (!retryHealthy) {
+									// Still failed, but allow continue
+									const continueAction = await vscode.window.showWarningMessage(
+										'Health check still failed. Continue anyway?',
+										'Continue',
+										'Cancel'
+									);
+									if (continueAction === 'Cancel') {
+										return;
+									}
+									// Continue execution
+								}
 							} else if (action === 'Open Settings') {
 								vscode.commands.executeCommand('workbench.action.openSettings', 'llt-assistant.maintenance.backendUrl');
+								return;
 							}
-							return;
+							// If action is 'Continue' or undefined, proceed with execution
 						}
-
-						// Step 2: Get current and previous commit hashes
-						progress.report({ message: 'Getting commit information...', increment: 20 });
-						const commitWatcher = new GitCommitWatcher(workspaceRoot);
-						const currentCommitHash = commitWatcher.getCurrentCommitHash();
-						const previousCommitHash = commitWatcher.getPreviousCommitHash();
-
-						if (!currentCommitHash) {
-							vscode.window.showWarningMessage('Not a git repository or no commits found');
-							return;
-						}
-
-						if (!previousCommitHash) {
-							vscode.window.showInformationMessage(
-								'This appears to be the first commit. No previous commit to compare.'
+						} catch (error) {
+							// Health check error, but allow user to continue
+							const action = await vscode.window.showWarningMessage(
+								`Backend health check error: ${error instanceof Error ? error.message : String(error)}. Continue anyway?`,
+								'Continue',
+								'Retry',
+								'Open Settings',
+								'Cancel'
 							);
-							return;
+							
+							if (action === 'Cancel') {
+								return;
+							} else if (action === 'Retry') {
+								await this.execute();
+								return;
+							} else if (action === 'Open Settings') {
+								vscode.commands.executeCommand('workbench.action.openSettings', 'llt-assistant.maintenance.backendUrl');
+								return;
+							}
+							// If action is 'Continue' or undefined, proceed with execution
 						}
+
+					// Step 2: Check if workspace is a Git repository
+					progress.report({ message: 'Checking Git repository...', increment: 20 });
+					const commitWatcher = new GitCommitWatcher(workspaceRoot);
+					
+					// Check if it's a Git repository
+					if (!commitWatcher.isGitRepository()) {
+						const action = await vscode.window.showWarningMessage(
+							'This workspace is not a Git repository. Maintenance analysis requires a Git repository with at least 2 commits.\n\nWould you like to initialize a Git repository?',
+							'Initialize Git',
+							'Cancel'
+						);
+						
+						if (action === 'Initialize Git') {
+							try {
+								const { execSync } = await import('child_process');
+								execSync('git init', { cwd: workspaceRoot });
+								execSync('git add .', { cwd: workspaceRoot });
+								execSync('git commit -m "Initial commit"', { cwd: workspaceRoot });
+								vscode.window.showInformationMessage(
+									'Git repository initialized. Please make another commit to use maintenance analysis.'
+								);
+							} catch (error) {
+								vscode.window.showErrorMessage(
+									`Failed to initialize Git repository: ${error instanceof Error ? error.message : String(error)}`
+								);
+							}
+						}
+						return;
+					}
+
+					// Get current and previous commit hashes
+					progress.report({ message: 'Getting commit information...', increment: 25 });
+					const currentCommitHash = commitWatcher.getCurrentCommitHash();
+					const previousCommitHash = commitWatcher.getPreviousCommitHash();
+
+					if (!currentCommitHash) {
+						const action = await vscode.window.showWarningMessage(
+							'No commits found in this Git repository. Maintenance analysis requires at least 2 commits to compare changes.\n\nWould you like to create an initial commit?',
+							'Create Initial Commit',
+							'Cancel'
+						);
+						
+						if (action === 'Create Initial Commit') {
+							try {
+								const { execSync } = await import('child_process');
+								execSync('git add .', { cwd: workspaceRoot });
+								execSync('git commit -m "Initial commit"', { cwd: workspaceRoot });
+								vscode.window.showInformationMessage(
+									'Initial commit created. Please make another commit to use maintenance analysis.'
+								);
+							} catch (error) {
+								vscode.window.showErrorMessage(
+									`Failed to create commit: ${error instanceof Error ? error.message : String(error)}`
+								);
+							}
+						}
+						return;
+					}
+
+					if (!previousCommitHash) {
+						const action = await vscode.window.showInformationMessage(
+							'This appears to be the first commit. Maintenance analysis requires at least 2 commits to compare changes.\n\nPlease make another commit to use this feature.',
+							'OK'
+						);
+						return;
+					}
 
 						// Step 3: Analyze commit diff
 						progress.report({ message: 'Analyzing code changes...', increment: 30 });
@@ -130,10 +200,99 @@ export class AnalyzeMaintenanceCommand {
 						let response: AnalyzeMaintenanceResponse;
 						try {
 							response = await this.client.analyzeMaintenance(request);
-						} catch (error) {
-							// Re-throw to be handled by outer catch block
-							throw error;
+					} catch (error: any) {
+						// Log detailed error for debugging
+						console.error('[Maintenance] Analyze API error:', error);
+						
+						// Check if it's a 404 error (endpoint not found)
+						const is404 = error?.statusCode === 404 || 
+							error?.message?.includes('404') ||
+							error?.message?.includes('endpoint not found') ||
+							error?.detail?.includes('Not Found') || 
+							error?.detail?.includes('404');
+						
+						if (is404) {
+							// Get backend URL for display
+							const config = vscode.workspace.getConfiguration('llt-assistant');
+							const backendUrl = config.get<string>('maintenance.backendUrl', 'https://cs5351.efan.dev/api/v1');
+							
+							const action = await vscode.window.showErrorMessage(
+								`Maintenance Analysis Failed: Backend API endpoint not found (404)\n\n` +
+								`The endpoint /maintenance/analyze may not be implemented yet.\n\n` +
+								`Expected: POST ${backendUrl}/maintenance/analyze\n\n` +
+								`Options:\n` +
+								`• Use Mock Mode for frontend testing (recommended)\n` +
+								`• Check with backend team if endpoint is available\n` +
+								`• Verify backend URL in settings`,
+								'Use Mock Mode',
+								'Open Settings',
+								'View Logs',
+								'Cancel'
+							);
+							
+							if (action === 'Use Mock Mode') {
+								await config.update('maintenance.useMockMode', true, vscode.ConfigurationTarget.Workspace);
+								vscode.window.showInformationMessage(
+									'Mock mode enabled. Please reload the window (Ctrl+R or Cmd+R) and try again.',
+									'Reload Now'
+								).then(selection => {
+									if (selection === 'Reload Now') {
+										vscode.commands.executeCommand('workbench.action.reloadWindow');
+									}
+								});
+							} else if (action === 'Open Settings') {
+								vscode.commands.executeCommand('workbench.action.openSettings', 'llt-assistant.maintenance');
+							} else if (action === 'View Logs') {
+								const outputChannel = vscode.window.createOutputChannel('LLT Maintenance');
+								outputChannel.appendLine('='.repeat(60));
+								outputChannel.appendLine('Maintenance Analysis Error (404)');
+								outputChannel.appendLine('='.repeat(60));
+								outputChannel.appendLine(`Error Message: ${error.message || 'Unknown error'}`);
+								outputChannel.appendLine(`Status Code: ${error.statusCode || 404}`);
+								outputChannel.appendLine(`Detail: ${error.detail || 'Not Found'}`);
+								outputChannel.appendLine(`Backend URL: ${backendUrl}`);
+								outputChannel.appendLine(`Request Endpoint: ${backendUrl}/maintenance/analyze`);
+								outputChannel.appendLine('');
+								outputChannel.appendLine('Possible Causes:');
+								outputChannel.appendLine('1. The backend endpoint /maintenance/analyze is not implemented');
+								outputChannel.appendLine('2. The backend URL is incorrect');
+								outputChannel.appendLine('3. The backend server is not running');
+								outputChannel.appendLine('4. Network connectivity issues');
+								outputChannel.appendLine('');
+								outputChannel.appendLine('Solution:');
+								outputChannel.appendLine('Enable Mock Mode in settings for frontend testing:');
+								outputChannel.appendLine('  "llt-assistant.maintenance.useMockMode": true');
+								outputChannel.appendLine('');
+								outputChannel.appendLine('Or verify the backend endpoint is available at:');
+								outputChannel.appendLine(`  ${backendUrl}/maintenance/analyze`);
+								outputChannel.show();
+							}
+							return;
 						}
+						
+						// For other errors, show a generic error message
+						const errorMessage = error?.message || 'Unknown error occurred';
+						const errorDetail = error?.detail || String(error);
+						
+						const action = await vscode.window.showErrorMessage(
+							`Maintenance analysis failed: ${errorMessage}\n\nDetails: ${errorDetail}`,
+							'Retry',
+							'View Logs',
+							'Cancel'
+						);
+						
+						if (action === 'Retry') {
+							await this.execute();
+							return;
+						} else if (action === 'View Logs') {
+							const outputChannel = vscode.window.createOutputChannel('LLT Maintenance');
+							outputChannel.appendLine('Maintenance Analysis Error:');
+							outputChannel.appendLine(`Error: ${errorMessage}`);
+							outputChannel.appendLine(`Detail: ${errorDetail}`);
+							outputChannel.show();
+						}
+						return;
+					}
 
 						// Step 6: Build result
 						progress.report({ message: 'Building analysis results...', increment: 80 });

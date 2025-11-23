@@ -25,7 +25,7 @@ export class MaintenanceBackendClient {
 	private backendUrl: string;
 
 	constructor() {
-		this.backendUrl = this.getBackendUrl();
+		this.backendUrl = this.getBackendUrlFromConfig();
 		this.axiosInstance = axios.create({
 			baseURL: this.backendUrl,
 			timeout: 60000, // 60 seconds for maintenance operations
@@ -36,9 +36,16 @@ export class MaintenanceBackendClient {
 	}
 
 	/**
-	 * Get backend URL from configuration
+	 * Get backend URL (public method for error messages)
 	 */
-	private getBackendUrl(): string {
+	public getBackendUrl(): string {
+		return this.backendUrl;
+	}
+
+	/**
+	 * Get backend URL from configuration (private)
+	 */
+	private getBackendUrlFromConfig(): string {
 		const config = vscode.workspace.getConfiguration('llt-assistant');
 		// Use maintenance-specific URL if configured, otherwise fall back to main backend URL
 		const mainBackendUrl = config.get<string>('backendUrl', 'https://cs5351.efan.dev');
@@ -59,7 +66,7 @@ export class MaintenanceBackendClient {
 	 * Update backend URL when configuration changes
 	 */
 	updateBackendUrl(): void {
-		this.backendUrl = this.getBackendUrl();
+		this.backendUrl = this.getBackendUrlFromConfig();
 		this.axiosInstance = axios.create({
 			baseURL: this.backendUrl,
 			timeout: 60000,
@@ -228,7 +235,22 @@ export class MaintenanceBackendClient {
 			const statusCode = axiosError.response.status;
 
 			if (statusCode >= 400 && statusCode < 500) {
-				// Client errors (validation, etc.)
+				// Special handling for 404 (endpoint not found)
+				if (statusCode === 404) {
+					const responseData = axiosError.response.data;
+					const detail = typeof responseData === 'object' 
+						? JSON.stringify(responseData) 
+						: String(responseData || 'Not Found');
+					
+					return {
+						type: 'validation' as BackendErrorType,
+						message: 'API endpoint not found (404)',
+						detail: detail,
+						statusCode: 404
+					};
+				}
+				
+				// Other client errors (validation, etc.)
 				return {
 					type: 'validation' as BackendErrorType,
 					message: 'Invalid request',

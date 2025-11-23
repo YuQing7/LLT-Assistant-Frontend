@@ -8,10 +8,9 @@ import { MaintenanceBackendClient } from '../api/maintenanceClient';
 import { MaintenanceTreeProvider } from '../ui/maintenanceTreeProvider';
 import { MaintenanceResult, AffectedTestCase, BatchFixResult, UserDecisionType } from '../models/types';
 import { BatchFixRequest } from '../api/types';
-import { BackendAgentController } from '../../agents';
-import { TestGenerationController } from '../../generation';
-import { PythonASTAnalyzer } from '../../analysis';
-import { ConfigurationManager } from '../../api';
+import { ConfigurationManager, BackendApiClient } from '../../api';
+import { pollTask } from '../../generation/async-task-poller';
+import { CodeAnalyzer } from '../../utils';
 import * as path from 'path';
 
 /**
@@ -93,15 +92,11 @@ export class BatchFixCommand {
 			throw new Error('No workspace folder open');
 		}
 
-		// Initialize components
-		const configManager = new ConfigurationManager();
-		const backendUrl = configManager.getBackendUrl();
-		const backendController = new BackendAgentController(backendUrl);
-		const testGenerator = new TestGenerationController();
-		const astAnalyzer = new PythonASTAnalyzer();
-
+		// Use the new async workflow via command execution
+		// This approach uses the existing generateTests command with regenerate mode
 		let successCount = 0;
 		let failCount = 0;
+		const failedTestDetails: string[] = [];
 
 		// Process each test
 		for (let i = 0; i < tests.length; i++) {
@@ -117,100 +112,90 @@ export class BatchFixCommand {
 				const sourceFile = test.source_file || this.findSourceFile(test, result);
 				const functionName = test.source_function || this.extractFunctionName(test);
 
-				if (!sourceFile) {
-					console.error(`Cannot find source file for test ${test.test_name}`);
+				if (!sourceFile || !functionName) {
+					const msg = `Cannot find source file or function for test ${test.test_name}`;
+					console.error(msg);
+					failedTestDetails.push(`${test.test_name}: ${msg}`);
 					failCount++;
 					continue;
 				}
 
 				const fullSourcePath = path.join(workspaceRoot, sourceFile);
 
-				// Build function context
-				const analysisResult = await astAnalyzer.buildFunctionContext(
-					fullSourcePath,
-					functionName
-				);
+				// Open the source file
+				const doc = await vscode.workspace.openTextDocument(fullSourcePath);
+				await vscode.window.showTextDocument(doc);
 
-				if (!analysisResult.success || !analysisResult.data) {
-					console.error(`Failed to analyze function for ${test.test_name}`);
+				// Extract function info using CodeAnalyzer
+				const editor = vscode.window.activeTextEditor;
+				if (!editor) {
+					const msg = `Cannot open editor for ${sourceFile}`;
+					console.error(msg);
+					failedTestDetails.push(`${test.test_name}: ${msg}`);
 					failCount++;
 					continue;
 				}
 
-				const functionContext = analysisResult.data;
+				// Find the function in the editor
+				const functionInfo = CodeAnalyzer.extractFunctionInfo(editor);
+				if (!functionInfo || functionInfo.name !== functionName) {
+					// Try to find function by name
+					const text = doc.getText();
+					const functionRegex = new RegExp(`def\\s+${functionName}\\s*\\([^)]*\\):`, 'm');
+					const match = text.match(functionRegex);
+					if (match && match.index !== undefined) {
+						const line = doc.positionAt(match.index).line;
+						editor.selection = new vscode.Selection(line, 0, line, 0);
+						editor.revealRange(new vscode.Range(line, 0, line, 0));
+					}
+				}
 
-				// Generate test using backend
-				let pipelineResult;
+				// Execute generateTests command with regenerate mode
+				// Note: This will show diff preview for each test, user needs to accept
 				try {
-					pipelineResult = await backendController.runFullPipeline(
-						functionContext,
-						userDescription || `Regenerate test for ${functionName}`,
-						async () => {
-							// Auto-confirm
-							return { confirmed: true, cancelled: false };
-						}
-					);
-				} catch (error) {
-					console.error(`Failed to generate test for ${test.test_name}:`, error);
-					failCount++;
-					continue;
-				}
-
-				if (!pipelineResult.success || !pipelineResult.stage2Response) {
-					console.error(`Failed to generate test for ${test.test_name}`);
-					failCount++;
-					continue;
-				}
-
-				// Generate and insert test
-				const generationResult = await testGenerator.generateAndInsertTests(
-					pipelineResult.stage2Response,
-					functionContext,
-					fullSourcePath
-				);
-
-				if (generationResult.success) {
+					await vscode.commands.executeCommand('llt-assistant.generateTests', {
+						mode: 'regenerate',
+						targetFunction: functionName,
+						functionName: functionName
+					});
 					successCount++;
-				} else {
+				} catch (error) {
+					const msg = `Failed to regenerate test ${test.test_name}: ${error instanceof Error ? error.message : String(error)}`;
+					console.error(msg);
+					failedTestDetails.push(`${test.test_name}: ${msg}`);
 					failCount++;
 				}
 			} catch (error) {
-				console.error(`Error regenerating test ${test.test_name}:`, error);
+				const msg = `Error regenerating test ${test.test_name}: ${error instanceof Error ? error.message : String(error)}`;
+				console.error(msg);
+				failedTestDetails.push(`${test.test_name}: ${msg}`);
 				failCount++;
 			}
 		}
 
 		// Show detailed summary
-		if (successCount > 0) {
-			const message = `✅ ${successCount} test(s) regenerated successfully` +
-				(failCount > 0 ? `, ${failCount} failed` : '');
-			
-			if (failCount > 0) {
-				vscode.window.showWarningMessage(
-					message,
-					'View Details'
-				).then(selection => {
-					if (selection === 'View Details') {
-						// Show output channel with details
-						const outputChannel = vscode.window.createOutputChannel('LLT Maintenance');
-						outputChannel.appendLine('Test Regeneration Summary:');
-						outputChannel.appendLine(`✅ Success: ${successCount}`);
-						outputChannel.appendLine(`❌ Failed: ${failCount}`);
-						outputChannel.show();
-					}
-				});
-			} else {
-				vscode.window.showInformationMessage(message);
-			}
-		} else {
-			vscode.window.showWarningMessage(
-				'No tests were regenerated. Please check the console for details.',
-				'View Console'
+		const message = `✅ ${successCount} test(s) regenerated successfully` +
+			(failCount > 0 ? `, ❌ ${failCount} failed` : '');
+
+		if (successCount > 0 || failCount > 0) {
+			vscode.window.showInformationMessage(
+				message,
+				'View Details'
 			).then(selection => {
-				if (selection === 'View Console') {
-					vscode.commands.executeCommand('workbench.action.output.toggleOutput');
+				if (selection === 'View Details') {
+					const outputChannel = vscode.window.createOutputChannel('LLT Maintenance');
+					outputChannel.appendLine('Test Regeneration Summary:');
+					outputChannel.appendLine(`✅ Success: ${successCount}`);
+					outputChannel.appendLine(`❌ Failed: ${failCount}`);
+					if (failedTestDetails.length > 0) {
+						outputChannel.appendLine('\nFailed Test Details:');
+						failedTestDetails.forEach(detail => outputChannel.appendLine(`- ${detail}`));
+					}
+					outputChannel.show();
 				}
 			});
+		} else {
+			vscode.window.showWarningMessage('No tests were regenerated. Please check the console for details.');
 		}
 	}
 
