@@ -12,11 +12,9 @@
     "coverage/**"
   ],
   "ignoreDependencies": [
-    "@types/vscode",
     "@vscode/test-electron",
     "fast-check",
     "glob",
-    "source-map-support",
-    "@istanbuljs/nyc-config-typescript"
+    "source-map-support"
   ]
 }
