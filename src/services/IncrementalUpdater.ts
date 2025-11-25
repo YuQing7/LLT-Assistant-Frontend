@@ -366,6 +366,27 @@ export class IncrementalUpdater implements vscode.Disposable {
   }
 
   /**
+   * Convert internal SymbolDiff to backend-expected format
+   */
+  private formatDiffForBackend(diff: SymbolDiff): BackendSymbolChange[] {
+    const changes: BackendSymbolChange[] = [];
+
+    for (const symbol of diff.added) {
+      changes.push({ action: 'added', symbol });
+    }
+
+    for (const symbol of diff.modified) {
+      changes.push({ action: 'modified', symbol });
+    }
+
+    for (const symbol of diff.deleted) {
+      changes.push({ action: 'deleted', symbol });
+    }
+
+    return changes;
+  }
+
+  /**
    * Check if symbol has changed
    */
   private hasChanged(old: SymbolInfo, newSymbol: SymbolInfo): boolean {
