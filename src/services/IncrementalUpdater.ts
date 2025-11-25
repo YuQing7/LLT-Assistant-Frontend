@@ -423,7 +423,7 @@ export class IncrementalUpdater implements vscode.Disposable {
   private async sendToBackend(
     projectId: string,
     filePath: string,
-    changes: SymbolChange[]
+    changes: BackendSymbolChange[]
   ): Promise<void> {
     const payload: IncrementalUpdateRequest = {
       version: this.contextState.getVersion(),
