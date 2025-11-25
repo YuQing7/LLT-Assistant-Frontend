@@ -4,16 +4,6 @@ import { ApiClient, IncrementalUpdateResponse, apiClient } from './ApiClient';
 import { FILE_CHANGE_DEBOUNCE_MS, STATUS_SUCCESS_HIDE_DELAY_MS, STATUS_ERROR_HIDE_DELAY_MS } from '../config';
 
 /**
- * Describes a symbol change between old and new state (internal use)
- */
-export interface SymbolChange {
-  action: 'added' | 'modified' | 'deleted';
-  name: string;
-  oldData?: SymbolInfo;
-  newData?: SymbolInfo;
-}
-
-/**
  * Diff calculation result - internal use for separation of concerns
  */
 export interface SymbolDiff {
