@@ -12,10 +12,12 @@
   ],
   "activationEvents": [
     "onLanguage:python",
+    "onView:lltContextView",
     "onView:lltQualityExplorer",
     "onView:lltCoverageExplorer",
     "onView:lltImpactExplorer",
     "onView:lltMaintenanceExplorer",
+    "onCommand:llt.reindexProject",
     "onCommand:llt-assistant.analyzeMaintenance",
     "workspaceContains:**/test_*.py",
     "workspaceContains:**/coverage.xml"
@@ -24,6 +26,11 @@
   "contributes": {
     "viewsContainers": {
       "activitybar": [
+        {
+          "id": "llt-context",
+          "title": "LLT Context",
+          "icon": "resources/icons/context-icon.svg"
+        },
         {
           "id": "llt-quality",
           "title": "LLT Quality",
@@ -42,6 +49,14 @@
       ]
     },
     "views": {
+      "llt-context": [
+        {
+          "id": "lltContextView",
+          "name": "Project Context",
+          "icon": "resources/icons/context-icon.svg",
+          "contextualTitle": "LLT Project Context"
+        }
+      ],
       "llt-quality": [
         {
           "id": "lltQualityExplorer",
@@ -170,6 +185,20 @@
         "icon": "$(wrench)"
       },
       {
+        "command": "llt.reindexProject",
+        "title": "LLT: Re-index Project",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "llt.clearCache",
+        "title": "LLT: Clear Cache",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "llt.viewLogs",
+        "title": "LLT: View Logs"
+      },
+      {
         "command": "llt.debug.extractSymbols",
         "title": "LLT Debug: Extract Symbols from Current File"
       },
@@ -180,6 +209,16 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "llt.reindexProject",
+          "when": "view == lltContextView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "llt.clearCache",
+          "when": "view == lltContextView",
+          "group": "navigation@2"
+        },
         {
           "command": "llt-assistant.analyzeQuality",
           "when": "view == lltQualityExplorer",
