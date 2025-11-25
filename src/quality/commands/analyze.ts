@@ -45,14 +45,25 @@ export class AnalyzeQualityCommand {
 					cancellable: true
 				},
 				async (progress, token) => {
+					console.log('[LLT Quality] =====================================================================');
+					console.log('[LLT Quality] Starting Quality Analysis');
+					console.log('[LLT Quality] =====================================================================');
+
 					// Step 1: Find test files
 					progress.report({ message: 'Finding test files...' });
+					console.log('[LLT Quality] Step 1: Finding test files...');
 					const testFiles = await this.findTestFiles();
+					console.log(`[LLT Quality] Found ${testFiles.length} test files:`);
+					testFiles.slice(0, 5).forEach(file => console.log(`[LLT Quality]   - ${file.fsPath}`));
+					if (testFiles.length > 5) {
+						console.log(`[LLT Quality]   ... and ${testFiles.length - 5} more files`);
+					}
 
 					if (testFiles.length === 0) {
 						vscode.window.showInformationMessage(
 							'No test files found in workspace'
 						);
+						console.log('[LLT Quality] No test files found, aborting analysis');
 						return;
 					}
 
@@ -60,35 +71,56 @@ export class AnalyzeQualityCommand {
 					progress.report({
 						message: `Reading ${testFiles.length} test ${testFiles.length === 1 ? 'file' : 'files'}...`
 					});
+					console.log('[LLT Quality] Step 2: Reading file contents...');
 					const filesWithContent = await this.readFileContents(testFiles);
+					console.log(`[LLT Quality] Successfully read ${filesWithContent.length} files`);
+					console.log('[LLT Quality] Sample content sizes:');
+					filesWithContent.slice(0, 3).forEach(file => {
+						console.log(`[LLT Quality]   - ${file.path}: ${file.content.length} chars`);
+					});
 
 					// Check if cancelled
 					if (token.isCancellationRequested) {
+						console.log('[LLT Quality] Analysis cancelled by user');
 						return;
 					}
 
 					// Step 3: Build request
+					console.log('[LLT Quality] Step 3: Building analysis request...');
 					const request = this.buildAnalysisRequest(filesWithContent);
+					console.log(`[LLT Quality] Request built with mode: ${request.mode}`);
+					console.log(`[LLT Quality] Config:`, JSON.stringify(request.config, null, 2));
 
 					// Step 4: Call backend API
 					progress.report({ message: 'Analyzing test quality...' });
+					console.log('[LLT Quality] Step 4: Calling backend API...');
 					const startTime = Date.now();
 					const result = await this.backendClient.analyzeQuality(request);
 					const duration = Date.now() - startTime;
+					console.log(`[LLT Quality] API call completed in ${duration}ms`);
 
 					// Check if cancelled
 					if (token.isCancellationRequested) {
+						console.log('[LLT Quality] Analysis cancelled by user after API response');
 						return;
 					}
 
 					// Step 5: Update tree view
+					console.log('[LLT Quality] Step 5: Updating tree view...');
 					this.treeProvider.refresh(result);
+					console.log('[LLT Quality] Tree view updated successfully');
 
 					// Step 6: Show summary
+					console.log('[LLT Quality] Step 6: Showing result summary...');
 					this.showResultSummary(result, duration);
+					console.log('[LLT Quality] =====================================================================');
+					console.log('[LLT Quality] Analysis completed successfully');
+					console.log('[LLT Quality] =====================================================================');
 				}
 			);
 		} catch (error) {
+			console.error('[LLT Quality] Analysis failed with error:', error);
+			console.error('[LLT Quality] =====================================================================');
 			this.handleError(error);
 		}
 	}
@@ -196,22 +228,20 @@ export class AnalyzeQualityCommand {
 	 * Show summary notification after analysis
 	 */
 	private showResultSummary(result: any, duration: number): void {
-		const { issues, metrics } = result;
-		const breakdown = metrics.severity_breakdown;
+		const { issues, summary } = result;
 
-		const criticalCount = breakdown?.error || 0;
-		const warningCount = breakdown?.warning || 0;
-		const infoCount = breakdown?.info || 0;
+		// Use summary object fields provided by the backend
+		const totalFiles = summary?.total_files || 0;
+		const totalIssues = summary?.total_issues || 0;
+		const criticalCount = summary?.critical_issues || 0;
 
 		let message = '';
 		if (criticalCount > 0) {
-			message = `⚠️  Found ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} (${criticalCount} critical) in ${metrics.total_tests} ${metrics.total_tests === 1 ? 'test' : 'tests'}`;
-		} else if (warningCount > 0) {
-			message = `⚡ Found ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} in ${metrics.total_tests} ${metrics.total_tests === 1 ? 'test' : 'tests'}`;
-		} else if (infoCount > 0) {
-			message = `ℹ️  Found ${issues.length} ${issues.length === 1 ? 'suggestion' : 'suggestions'} in ${metrics.total_tests} ${metrics.total_tests === 1 ? 'test' : 'tests'}`;
+			message = `⚠️  Found ${totalIssues} ${totalIssues === 1 ? 'issue' : 'issues'} (${criticalCount} critical) across ${totalFiles} ${totalFiles === 1 ? 'file' : 'files'}`;
+		} else if (totalIssues > 0) {
+			message = `⚡ Found ${totalIssues} ${totalIssues === 1 ? 'issue' : 'issues'} across ${totalFiles} ${totalFiles === 1 ? 'file' : 'files'}`;
 		} else {
-			message = `✅ All ${metrics.total_tests} ${metrics.total_tests === 1 ? 'test' : 'tests'} look good!`;
+			message = `✅ All ${totalFiles} ${totalFiles === 1 ? 'file' : 'files'} look good!`;
 		}
 
 		message += ` (${duration}ms)`;
