@@ -290,6 +290,18 @@
           "group": "navigation@4"
         }
       ],
+      "view/item/context": [
+        {
+          "command": "llt.reindexProject",
+          "when": "view == lltContextView",
+          "group": "inline@1"
+        },
+        {
+          "command": "llt.clearCache",
+          "when": "view == lltContextView",
+          "group": "inline@2"
+        }
+      ],
       "editor/context": [
         {
           "when": "editorLangId == python",
