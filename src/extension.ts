@@ -190,7 +190,13 @@ function registerContextCommands(
 		outputChannel.show();
 	});
 
-	context.subscriptions.push(reindexCommand, clearCacheCommand, viewLogsCommand);
+		// Register command for Activity Bar retry button (reuses reindex logic)
+		const retryIndexCommand = vscode.commands.registerCommand('llt.retryIndex', async () => {
+			outputChannel.appendLine('User clicked [Retry Index] from Activity Bar...');
+			await vscode.commands.executeCommand('llt.reindexProject');
+		});
+
+		context.subscriptions.push(reindexCommand, clearCacheCommand, viewLogsCommand, retryIndexCommand);
 }
 
 /**
@@ -217,14 +223,28 @@ async function autoIndexOnStartup(
     if (!lspReady) {
         outputChannel.appendLine('❌ Python LSP not ready after multiple retries.');
         statusView.setStatus('lspNotReady');
-        vscode.window.showWarningMessage(
-            'Python LSP is not ready. Context indexing postponed. Please ensure the Python extension is installed and running.',
-            'Try Again'
-        ).then(selection => {
-            if (selection === 'Try Again') {
-                vscode.commands.executeCommand('llt.reindexProject');
-            }
-        });
+        
+        const selection = await vscode.window.showWarningMessage(
+            '⚠️ Python LSP is not ready. Context indexing postponed.\n\n' +
+            'Possible reasons:\n' +
+            '- Python extension not installed\n' +
+            '- LSP service crashed\n' +
+            '- Very large project (LSP still analyzing)',
+            'Try Now',
+            'Try Later',
+            'View Logs'
+        );
+        
+        if (selection === 'Try Now') {
+            outputChannel.appendLine('User chose to retry indexing immediately');
+            vscode.commands.executeCommand('llt.reindexProject');
+        } else if (selection === 'View Logs') {
+            outputChannel.appendLine('User opened logs to debug LSP issue');
+            outputChannel.show();
+        } else {
+            outputChannel.appendLine('User postponed indexing. Can retry via Activity Bar.');
+            // User selected 'Try Later' - they can retry via the Activity Bar button
+        }
         return;
     }
     outputChannel.appendLine('✅ LSP is ready.');

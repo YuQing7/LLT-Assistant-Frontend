@@ -119,6 +119,13 @@ export class ContextStatusView implements vscode.TreeDataProvider<StatusItem> {
             new vscode.ThemeIcon('warning'),
             'Could not detect the Python Language Server. Click to retry.',
             'lspNotReady'
+          ),
+          new StatusItem(
+            '$(sync) [Retry Index]',
+            vscode.TreeItemCollapsibleState.None,
+            '',
+            'Click to attempt indexing again',
+            'retryIndex'
           )
         ];
       
