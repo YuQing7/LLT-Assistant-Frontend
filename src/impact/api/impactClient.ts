@@ -89,14 +89,22 @@ export class ImpactAnalysisClient {
 			// Add client metadata
 			request.client_metadata = this.getClientMetadata();
 
+			// Log the full request payload
+			console.log('[Impact Analysis] Request Payload:', JSON.stringify(request, null, 2));
+
 			// Make API call
 			const response = await this.axiosInstance.post<DetectCodeChangesResponse>(
 				'/workflows/detect-code-changes',
 				request
 			);
 
+			// Log the full response object
+			console.log('[Impact Analysis] Response Object:', JSON.stringify(response.data, null, 2));
+
 			return response.data;
 		} catch (error) {
+			// Log the error object
+			console.error('[Impact Analysis] Error Object:', error);
 			throw this.handleError(error);
 		}
 	}
