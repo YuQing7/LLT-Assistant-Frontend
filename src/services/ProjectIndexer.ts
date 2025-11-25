@@ -267,10 +267,17 @@ export class ProjectIndexer {
       };
       
       console.log('[LLT API] Using fallback payload:', JSON.stringify(minimalPayload, null, 2));
-      
+
       try {
         const response = await this.apiClient.initializeProject(minimalPayload);
         this.outputChannel.appendLine(`✅ Fallback successful! Backend accepted minimal data.`);
+
+        // ✅ FIX: Also populate cache in fallback path
+        this.contextState.setProjectId(response.project_id);
+        this.contextState.setVersion(1);
+        this.contextState.updateLastIndexedAt();
+        this.outputChannel.appendLine(`[LLT] Fallback: Cache initialized with project ID ${response.project_id}`);
+
         return response;
       } catch (fallbackError) {
         this.outputChannel.appendLine(`❌ Fallback also failed: ${fallbackError}`);
@@ -320,6 +327,32 @@ export class ProjectIndexer {
 
       return response;
     } catch (error: any) {
+      // ✅ FIX: Handle 409 CONFLICT gracefully - project already exists
+      if (error.code === 'CONFLICT') {
+        this.outputChannel.appendLine(`⚠️ Project already exists on backend. Populating local cache with extracted data...`);
+
+        // Still populate the local cache with the extracted data
+        this.contextState.setProjectId(projectId);
+        this.contextState.setVersion(1);
+        this.contextState.updateLastIndexedAt();
+
+        for (const fileData of data) {
+          this.contextState.setSymbols(fileData.filePath, fileData.symbols);
+        }
+
+        const totalSymbols = data.reduce((sum, f) => sum + f.symbols.length, 0);
+        this.outputChannel.appendLine(`✅ Local cache populated with ${data.length} files, ${totalSymbols} symbols (project existed on backend)`);
+
+        // Return a synthetic response for compatibility
+        return {
+          project_id: projectId,
+          status: 'synced',
+          indexed_files: data.length,
+          indexed_symbols: totalSymbols,
+          processing_time_ms: 0
+        };
+      }
+
       this.handleBackendError(error);
       throw error;
     }
