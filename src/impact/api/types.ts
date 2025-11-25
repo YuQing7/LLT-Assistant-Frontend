@@ -22,11 +22,23 @@ export interface ImpactAnalysisRequest {
 }
 
 /**
- * Response interface
+ * Backend response test format
+ */
+export interface BackendImpactedTest {
+  test_path: string;
+  impact_score: number;
+  severity: string;
+  reasons: string[];
+}
+
+/**
+ * Response interface - match backend format
  */
 export interface ImpactAnalysisResponse {
   context_id: string;
-  impacted_tests: AffectedTest[];
+  impacted_tests: BackendImpactedTest[];
+  severity?: string;
+  suggested_action?: string;
   summary?: {
     change_type: string;
     lines_changed: number;

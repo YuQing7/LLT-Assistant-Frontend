@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { GitDiffExtractor } from '../git/diffExtractor';
 import { ImpactAnalysisClient } from '../api/impactClient';
 import { ImpactTreeProvider } from '../ui/impactTreeProvider';
-import { ChangeDetectionResult } from '../models/types';
+import { ChangeDetectionResult, ImpactLevel } from '../models/types';
 import { ImpactAnalysisRequest } from '../api/types';
 
 /**
@@ -18,6 +18,32 @@ export class AnalyzeImpactCommand {
 		private client: ImpactAnalysisClient,
 		private treeProvider: ImpactTreeProvider
 	) {}
+
+	/**
+	 * Extract test name from test file path
+	 */
+	private extractTestName(testPath: string): string {
+		if (!testPath) {
+			return 'unknown_test';
+		}
+		const parts = testPath.split('/');
+		const filename = parts[parts.length - 1];
+		// Remove .py extension
+		return filename.replace('.py', '');
+	}
+
+	/**
+	 * Map backend severity to frontend impact level
+	 */
+	private mapSeverity(severity: string): ImpactLevel {
+		const severityMap: Record<string, ImpactLevel> = {
+			'critical': 'critical',
+			'high': 'high',
+			'medium': 'medium',
+			'low': 'low'
+		};
+		return severityMap[severity] || 'medium';
+	}
 
 	/**
 	 * Execute the analyze impact command
@@ -102,8 +128,18 @@ export class AnalyzeImpactCommand {
 							const response = await this.client.detectCodeChanges(request);
 							contextId = response.context_id;
 
-							// Collect results
-							allAffectedTests.push(...response.impacted_tests);
+							// Transform backend response to frontend format
+							if (response.impacted_tests && response.impacted_tests.length > 0) {
+								const transformedTests = response.impacted_tests.map(test => ({
+									file_path: test.test_path || '',
+									test_name: this.extractTestName(test.test_path),
+									impact_level: this.mapSeverity(test.severity),
+									reason: test.reasons && test.reasons.length > 0 ? test.reasons.join(', ') : 'Test affected due to code changes',
+									requires_update: test.impact_score > 0.5
+								}));
+								allAffectedTests.push(...transformedTests);
+							}
+
 							if (response.summary) {
 								totalLinesAdded += response.summary.lines_changed;
 							}
