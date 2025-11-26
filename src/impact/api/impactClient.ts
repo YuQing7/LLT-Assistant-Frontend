@@ -12,6 +12,7 @@ import {
 	BackendErrorType,
 	HealthCheckResponse
 } from './types';
+import { BackendConfigManager } from '../../utils/backendConfig';
 
 /**
  * Impact Analysis Backend Client
@@ -21,7 +22,7 @@ export class ImpactAnalysisClient {
 	private backendUrl: string;
 
 	constructor() {
-		this.backendUrl = this.getBackendUrl();
+		this.backendUrl = BackendConfigManager.getBackendUrl();
 		this.axiosInstance = axios.create({
 			baseURL: this.backendUrl,
 			timeout: 30000, // 30 seconds
@@ -32,19 +33,18 @@ export class ImpactAnalysisClient {
 	}
 
 	/**
-	 * Get backend URL from configuration
+	 * Get backend URL from unified configuration
+	 * @deprecated - Now uses BackendConfigManager directly in constructor
 	 */
 	private getBackendUrl(): string {
-		const config = vscode.workspace.getConfiguration('llt-assistant');
-		// Use the same backend URL as test generation
-		return config.get('backendUrl', 'https://cs5351.efan.dev');
+		return BackendConfigManager.getBackendUrl();
 	}
 
 	/**
 	 * Update backend URL when configuration changes
 	 */
 	updateBackendUrl(): void {
-		this.backendUrl = this.getBackendUrl();
+		this.backendUrl = BackendConfigManager.getBackendUrl();
 		this.axiosInstance = axios.create({
 			baseURL: this.backendUrl,
 			timeout: 30000,

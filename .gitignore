@@ -10,9 +10,6 @@ test-workspace
 .DS_Store
 .claude/
 
-# Documentation files (not needed in repo)
-docs/
-
 # Cursor plans
 .cursor/
 

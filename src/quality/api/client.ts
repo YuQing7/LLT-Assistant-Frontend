@@ -11,13 +11,14 @@ import {
 	HealthCheckResponse
 } from './types';
 import { QUALITY_DEFAULTS } from '../utils/constants';
+import { BackendConfigManager } from '../../utils/backendConfig';
 
 export class QualityBackendClient {
 	private client: AxiosInstance;
 	private baseUrl: string;
 
 	constructor() {
-		this.baseUrl = this.getBackendUrl();
+		this.baseUrl = BackendConfigManager.getBackendUrl();
 		this.client = axios.create({
 			baseURL: this.baseUrl,
 			timeout: 30000, // 30 seconds
@@ -30,11 +31,11 @@ export class QualityBackendClient {
 	}
 
 	/**
-	 * Get backend URL from VSCode configuration
+	 * Get backend URL from unified configuration
+	 * @deprecated - Now uses BackendConfigManager directly in constructor
 	 */
 	private getBackendUrl(): string {
-		const config = vscode.workspace.getConfiguration('llt-assistant.quality');
-		return config.get('backendUrl', QUALITY_DEFAULTS.BACKEND_URL);
+		return BackendConfigManager.getBackendUrl();
 	}
 
 	/**

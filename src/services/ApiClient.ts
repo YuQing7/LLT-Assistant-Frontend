@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { BackendConfigManager } from '../utils/backendConfig';
 
 /**
  * API response interfaces
@@ -102,21 +103,9 @@ export class ApiClient {
     if (this.baseUrl) {
       return this.baseUrl;
     }
-    
-    // 2. Load from VSCode settings
-    try {
-      const config = vscode.workspace.getConfiguration('llt-assistant');
-      // Use quality backend URL for context system (port 8886)
-      const url = config.get<string>('quality.backendUrl') || config.get<string>('backendUrl');
-      if (url && url.trim()) {
-        return url;
-      }
-    } catch (error) {
-      console.warn('[ApiClient] Could not load config:', error);
-    }
-    
-    // 3. Fallback to default
-    return 'https://cs5351.efan.dev';
+
+    // 2. Load from unified VSCode configuration
+    return BackendConfigManager.getBackendUrl();
   }
 
   /**

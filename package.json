@@ -280,13 +280,8 @@
       "properties": {
         "llt-assistant.backendUrl": {
           "type": "string",
-          "default": "https://cs5351.efan.dev",
-          "description": "Backend API URL for test generation"
-        },
-        "llt-assistant.quality.backendUrl": {
-          "type": "string",
           "default": "http://localhost:8886",
-          "description": "Backend API URL for test quality analysis (separate from test generation backend)"
+          "description": "Backend API URL for all LLT features (Test Generation, Quality Analysis, Coverage Optimization, Impact Analysis)"
         },
         "llt-assistant.quality.analysisMode": {
           "type": "string",
