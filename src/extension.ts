@@ -209,41 +209,100 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// ===== Coverage Optimization Feature (Feature 2) =====
 	console.log('[LLT Coverage] Initializing Coverage Optimization feature...');
-	
+
 	try {
 		const coverageBackendClient = new CoverageBackendClient();
 		const coverageTreeProvider = new CoverageTreeDataProvider();
+
+		// Create CodeLens providers for coverage feature
+		const coverageCodeLensProvider = new CoverageCodeLensProvider();
+		const reviewCodeLensProvider = new ReviewCodeLensProvider();
+
+		// Create InlinePreviewManager for displaying generated tests
+		const inlinePreviewManager = new InlinePreviewManager(reviewCodeLensProvider);
+
+		// Create CoverageCommands with all required dependencies
 		const coverageCommands = new CoverageCommands(
 			coverageTreeProvider,
-			coverageBackendClient
+			coverageBackendClient,
+			coverageCodeLensProvider,
+			inlinePreviewManager
 		);
-		
+
 		// Register Coverage Analysis commands
 		const analyzeCoverageDisposable = vscode.commands.registerCommand('llt-assistant.analyzeCoverage', () => {
 			console.log('[LLT Coverage] Command llt-assistant.analyzeCoverage triggered');
 			coverageCommands.analyzeCoverage();
 		});
 		context.subscriptions.push(analyzeCoverageDisposable);
-		
+
 		const refreshCoverageDisposable = vscode.commands.registerCommand('llt-assistant.refreshCoverageView', () => {
 			console.log('[LLT Coverage] Command llt-assistant.refreshCoverageView triggered');
 			coverageTreeProvider.refresh();
 		});
 		context.subscriptions.push(refreshCoverageDisposable);
-		
+
 		const clearCoverageDisposable = vscode.commands.registerCommand('llt-assistant.clearCoverage', () => {
 			console.log('[LLT Coverage] Command llt-assistant.clearCoverage triggered');
 			coverageCommands.clearCoverage();
 		});
 		context.subscriptions.push(clearCoverageDisposable);
-		
+
+		// Register CodeLens Accept/Discard commands for inline preview
+		const acceptPreviewDisposable = vscode.commands.registerCommand('llt-assistant.acceptInlinePreview', () => {
+			console.log('[LLT Coverage] Command llt-assistant.acceptInlinePreview triggered');
+			inlinePreviewManager.acceptPreview();
+		});
+		context.subscriptions.push(acceptPreviewDisposable);
+
+		const rejectPreviewDisposable = vscode.commands.registerCommand('llt-assistant.rejectInlinePreview', () => {
+			console.log('[LLT Coverage] Command llt-assistant.rejectInlinePreview triggered');
+			inlinePreviewManager.rejectPreview();
+		});
+		context.subscriptions.push(rejectPreviewDisposable);
+
+		// Register CodeLens providers
+		const coverageCodeLensDisposable = vscode.languages.registerCodeLensProvider(
+			{ scheme: 'file', language: 'python' },
+			coverageCodeLensProvider
+		);
+		context.subscriptions.push(coverageCodeLensDisposable);
+
+		const reviewCodeLensDisposable = vscode.languages.registerCodeLensProvider(
+			{ scheme: 'file', language: 'python' },
+			reviewCodeLensProvider
+		);
+		context.subscriptions.push(reviewCodeLensDisposable);
+
+		// Register CodeLens Yes/No commands for coverage confirmation
+		const codeLensYesDisposable = vscode.commands.registerCommand(
+			'llt-assistant.coverageCodeLensYes',
+			(filePath: string, func: any, uri: vscode.Uri, range: vscode.Range) => {
+				console.log('[LLT Coverage] CodeLens Yes clicked');
+				coverageCommands.handleCodeLensYes(filePath, func, uri, range);
+			}
+		);
+		context.subscriptions.push(codeLensYesDisposable);
+
+		const codeLensNoDisposable = vscode.commands.registerCommand(
+			'llt-assistant.coverageCodeLensNo',
+			(uri: vscode.Uri, range: vscode.Range) => {
+				console.log('[LLT Coverage] CodeLens No clicked');
+				coverageCommands.handleCodeLensNo(uri, range);
+			}
+		);
+		context.subscriptions.push(codeLensNoDisposable);
+
 		// Create tree view for Coverage Explorer
 		const coverageTreeView = vscode.window.createTreeView('lltCoverageExplorer', {
 			treeDataProvider: coverageTreeProvider,
 			showCollapseAll: true
 		});
 		context.subscriptions.push(coverageTreeView);
-		
+
+		// Add dispose handler for inline preview manager
+		context.subscriptions.push({ dispose: () => inlinePreviewManager.dispose() });
+
 		console.log('[LLT Coverage] Coverage Analysis commands registered successfully');
 	} catch (error) {
 		console.error('[LLT Coverage] Error initializing Coverage Analysis:', error);
