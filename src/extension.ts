@@ -6,15 +6,11 @@
  */
 
 import * as vscode from 'vscode';
-import { ConfigurationManager, BackendApiClient } from './api';
-import { UIDialogs } from './ui';
-import { CodeAnalyzer } from './utils';
 import {
   TestGenerationCodeLensProvider,
   TestGenerationStatusBar,
-  GenerateTestsRequest
+  TestGenerationCommands
 } from './generation';
-import { pollTask } from './generation/async-task-poller';
 import {
 	QualityBackendClient,
 	QualityTreeProvider,
@@ -118,8 +114,45 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(codeLensDisposable);
 
-	const generateTestsCommand = registerGenerateTestsCommand(context, testGenStatusBar);
-	context.subscriptions.push(generateTestsCommand);
+	// Create shared InlinePreviewManager (used by both F1 and F2)
+	// Note: This is created here so F1 can use it; F2 will also use the same instance
+	const reviewCodeLensProvider = new ReviewCodeLensProvider();
+	const inlinePreviewManager = new InlinePreviewManager(reviewCodeLensProvider);
+
+	// Register CodeLens Accept/Discard commands for inline preview (shared by F1 and F2)
+	const acceptPreviewDisposable = vscode.commands.registerCommand('llt-assistant.acceptInlinePreview', () => {
+		console.log('[LLT] Command llt-assistant.acceptInlinePreview triggered');
+		inlinePreviewManager.acceptPreview();
+	});
+	context.subscriptions.push(acceptPreviewDisposable);
+
+	const rejectPreviewDisposable = vscode.commands.registerCommand('llt-assistant.rejectInlinePreview', () => {
+		console.log('[LLT] Command llt-assistant.rejectInlinePreview triggered');
+		inlinePreviewManager.rejectPreview();
+	});
+	context.subscriptions.push(rejectPreviewDisposable);
+
+	// Register ReviewCodeLensProvider (shared by F1 and F2)
+	const reviewCodeLensDisposable = vscode.languages.registerCodeLensProvider(
+		{ scheme: 'file', language: 'python' },
+		reviewCodeLensProvider
+	);
+	context.subscriptions.push(reviewCodeLensDisposable);
+
+	// Add dispose handler for inline preview manager
+	context.subscriptions.push({ dispose: () => inlinePreviewManager.dispose() });
+
+	// Create TestGenerationCommands instance with shared InlinePreviewManager
+	const testGenCommands = new TestGenerationCommands(
+		testGenStatusBar,
+		undefined,  // BackendApiClient will be created internally
+		inlinePreviewManager
+	);
+	const generateTestsDisposable = vscode.commands.registerCommand(
+		'llt-assistant.generateTests',
+		(args) => testGenCommands.generateTests(args)
+	);
+	context.subscriptions.push(generateTestsDisposable);
 
 	// ===== Quality Analysis Feature =====
 	const qualityBackendClient = new QualityBackendClient();
@@ -214,19 +247,16 @@ export async function activate(context: vscode.ExtensionContext) {
 		const coverageBackendClient = new CoverageBackendClient();
 		const coverageTreeProvider = new CoverageTreeDataProvider();
 
-		// Create CodeLens providers for coverage feature
+		// Create CoverageCodeLensProvider (specific to F2)
 		const coverageCodeLensProvider = new CoverageCodeLensProvider();
-		const reviewCodeLensProvider = new ReviewCodeLensProvider();
 
-		// Create InlinePreviewManager for displaying generated tests
-		const inlinePreviewManager = new InlinePreviewManager(reviewCodeLensProvider);
-
+		// Use shared InlinePreviewManager (created in Test Generation section above)
 		// Create CoverageCommands with all required dependencies
 		const coverageCommands = new CoverageCommands(
 			coverageTreeProvider,
 			coverageBackendClient,
 			coverageCodeLensProvider,
-			inlinePreviewManager
+			inlinePreviewManager  // Shared with F1
 		);
 
 		// Register Coverage Analysis commands
@@ -248,31 +278,15 @@ export async function activate(context: vscode.ExtensionContext) {
 		});
 		context.subscriptions.push(clearCoverageDisposable);
 
-		// Register CodeLens Accept/Discard commands for inline preview
-		const acceptPreviewDisposable = vscode.commands.registerCommand('llt-assistant.acceptInlinePreview', () => {
-			console.log('[LLT Coverage] Command llt-assistant.acceptInlinePreview triggered');
-			inlinePreviewManager.acceptPreview();
-		});
-		context.subscriptions.push(acceptPreviewDisposable);
+		// Note: Accept/Discard commands and ReviewCodeLensProvider are already registered
+		// in the Test Generation section above (shared between F1 and F2)
 
-		const rejectPreviewDisposable = vscode.commands.registerCommand('llt-assistant.rejectInlinePreview', () => {
-			console.log('[LLT Coverage] Command llt-assistant.rejectInlinePreview triggered');
-			inlinePreviewManager.rejectPreview();
-		});
-		context.subscriptions.push(rejectPreviewDisposable);
-
-		// Register CodeLens providers
+		// Register CoverageCodeLensProvider (specific to F2)
 		const coverageCodeLensDisposable = vscode.languages.registerCodeLensProvider(
 			{ scheme: 'file', language: 'python' },
 			coverageCodeLensProvider
 		);
 		context.subscriptions.push(coverageCodeLensDisposable);
-
-		const reviewCodeLensDisposable = vscode.languages.registerCodeLensProvider(
-			{ scheme: 'file', language: 'python' },
-			reviewCodeLensProvider
-		);
-		context.subscriptions.push(reviewCodeLensDisposable);
 
 		// Register CodeLens Yes/No commands for coverage confirmation
 		const codeLensYesDisposable = vscode.commands.registerCommand(
@@ -299,9 +313,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			showCollapseAll: true
 		});
 		context.subscriptions.push(coverageTreeView);
-
-		// Add dispose handler for inline preview manager
-		context.subscriptions.push({ dispose: () => inlinePreviewManager.dispose() });
 
 		console.log('[LLT Coverage] Coverage Analysis commands registered successfully');
 	} catch (error) {
@@ -531,210 +542,4 @@ export async function deactivate() {
 	} catch (error) {
 		console.error('[LLT] Error during deactivation:', error);
 	}
-}
-
-// ... (rest of the file remains unchanged)
-function registerGenerateTestsCommand(
-	context: vscode.ExtensionContext,
-	statusBar: TestGenerationStatusBar
-): vscode.Disposable {
-	// This function remains exactly the same as in the original
-	return vscode.commands.registerCommand('llt-assistant.generateTests', async (args?: {
-		functionName?: string;
-		uri?: vscode.Uri;
-		line?: number;
-		mode?: 'new' | 'regenerate';
-		targetFunction?: string;
-	}) => {
-		try {
-			// --- Step 1: Rename variable for UI decision ---
-			const initialMode = args?.mode || 'new';
-
-			const editor = vscode.window.activeTextEditor;
-			if (!editor) {
-				await UIDialogs.showError('No active editor found. Please open a Python file.');
-				return;
-			}
-
-			if (editor.document.languageId !== 'python') {
-				await UIDialogs.showError('This command only works with Python files.');
-				return;
-			}
-
-			const filePath = editor.document.uri.fsPath;
-
-			let sourceCode: string;
-			let functionName: string | undefined;
-
-			if (args?.functionName || args?.targetFunction) {
-				const functionInfo = CodeAnalyzer.extractFunctionInfo(editor);
-				if (!functionInfo) {
-					await UIDialogs.showError('Could not extract function information.');
-					return;
-				}
-				sourceCode = functionInfo.code;
-				functionName = functionInfo.name;
-			} else {
-				const functionInfo = CodeAnalyzer.extractFunctionInfo(editor);
-				if (!functionInfo) {
-					await UIDialogs.showError(
-						'Could not find a Python function. Please place your cursor inside a function or select the function code.'
-					);
-					return;
-				}
-				sourceCode = functionInfo.code;
-				functionName = functionInfo.name;
-			}
-
-			if (!CodeAnalyzer.isValidPythonFunction(sourceCode)) {
-				await UIDialogs.showError('The selected text does not appear to be a valid Python function.');
-				return;
-			}
-
-			let userDescription: string | undefined;
-
-			// --- Step 2: Update UI decision logic ---
-			if (initialMode === 'new') {
-				const input = await UIDialogs.showTestDescriptionInput({
-					prompt: 'Describe your test requirements (optional - press Enter to skip)',
-					placeHolder: 'e.g., Focus on edge cases, test error handling...'
-				});
-
-				if (input === undefined) {
-					return;
-				}
-
-				userDescription = input || undefined;
-			} else {
-				userDescription = 'Regenerate tests to fix broken coverage after code changes';
-			}
-
-			const existingTestFilePath = await CodeAnalyzer.findExistingTestFile(filePath);
-			const existingTestCode = existingTestFilePath
-				? await CodeAnalyzer.readFileContent(existingTestFilePath)
-				: null;
-
-			// --- Step 3: Add final mode decision logic here ---
-			const finalMode = existingTestCode ? 'regenerate' : initialMode;
-
-			const configManager = new ConfigurationManager();
-			const validation = configManager.validateConfiguration();
-			if (!validation.valid) {
-				await UIDialogs.showError(
-					`Configuration error:\n${validation.errors.join('\n')}`,
-					['Open Settings']
-				);
-				return;
-			}
-
-			// --- Step 4: Update API request body ---
-			const request: GenerateTestsRequest = {
-				source_code: sourceCode,
-				user_description: userDescription,
-				existing_test_code: existingTestCode || undefined,
-				context: {
-					mode: finalMode, // <-- Use finalMode
-					target_function: functionName
-				}
-			};
-
-			const backendUrl = configManager.getBackendUrl();
-			const backendClient = new BackendApiClient(backendUrl);
-
-			statusBar.showGenerating();
-
-			let asyncJobResponse;
-			try {
-				asyncJobResponse = await backendClient.generateTestsAsync(request);
-			} catch (error) {
-				statusBar.hide();
-				await UIDialogs.showError(
-					`Failed to start test generation: ${error instanceof Error ? error.message : String(error)}`
-				);
-				return;
-			}
-
-			vscode.window.showInformationMessage('Test generation task started...');
-
-			const result = await pollTask(
-				{
-					baseUrl: backendUrl,
-					taskId: asyncJobResponse.task_id,
-					intervalMs: 1500,
-					timeoutMs: 60000
-				},
-				(event) => {
-					switch (event.type) {
-						case 'pending':
-							statusBar.showPending();
-							break;
-						case 'processing':
-							statusBar.showProcessing();
-							break;
-						case 'completed':
-							break;
-						case 'failed':
-							statusBar.showError(event.error);
-							break;
-						case 'timeout':
-							statusBar.showError('Timeout');
-							break;
-					}
-				}
-			).catch(error => {
-				statusBar.hide();
-				throw error;
-			});
-
-			statusBar.hide();
-
-			const path = await import('path');
-			const targetTestFilePath = existingTestFilePath || await (async () => {
-				const workspace = vscode.workspace.workspaceFolders?.[0];
-				if (!workspace) {
-					return path.join(path.dirname(filePath), `test_${path.basename(filePath)}`);
-				}
-				const testsDir = path.join(workspace.uri.fsPath, 'tests');
-				return path.join(testsDir, `test_${path.basename(filePath)}`);
-			})();
-
-			const accepted = await UIDialogs.showDiffPreview(
-				'Generated Tests Preview',
-				existingTestCode || '',
-				result.generated_code,
-				targetTestFilePath
-			);
-
-			if (!accepted) {
-				vscode.window.showInformationMessage('Test generation cancelled. No changes were made.');
-				return;
-			}
-
-			const fs = await import('fs').then(m => m.promises);
-			await fs.mkdir(path.dirname(targetTestFilePath), { recursive: true });
-			await fs.writeFile(targetTestFilePath, result.generated_code, 'utf-8');
-
-			const document = await vscode.workspace.openTextDocument(targetTestFilePath);
-			await vscode.window.showTextDocument(document);
-
-			const testCount = result.generated_code.split(/\bdef test_/).length - 1;
-			statusBar.showCompleted(testCount);
-
-			await UIDialogs.showSuccess(
-				`✓ Tests generated successfully!\n\n` +
-				`File: ${targetTestFilePath}\n` +
-				`Tests: ${testCount}\n\n` +
-				`${result.explanation}`,
-				['OK']
-			);
-
-		} catch (error) {
-			statusBar.hide();
-			console.error('Error in generateTests command:', error);
-			await UIDialogs.showError(
-				`Test generation failed: ${error instanceof Error ? error.message : String(error)}`,
-				['OK']
-			);
-		}
-	});
 }

@@ -8,6 +8,9 @@
 // Main controller
 export { TestGenerationController } from './test-generator';
 
+// Commands (refactored from extension.ts)
+export { TestGenerationCommands, GenerateTestsArgs } from './commands';
+
 // CodeLens provider
 export { TestGenerationCodeLensProvider } from './codelens-provider';
 

@@ -3,4 +3,9 @@
  */
 
 export { ConfigurationManager } from './config';
-export { BackendApiClient } from './backend-client';
+export {
+  BackendApiClient,
+  TaskPollingError,
+  TaskTimeoutError,
+  PollingOptions
+} from './backend-client';
