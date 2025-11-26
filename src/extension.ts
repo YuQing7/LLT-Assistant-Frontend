@@ -288,8 +288,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		});
 		context.subscriptions.push(analyzeCoverageDisposable);
 
-		const refreshCoverageDisposable = vscode.commands.registerCommand('llt-assistant.refreshCoverageView', () => {
-			console.log('[LLT Coverage] Command llt-assistant.refreshCoverageView triggered');
+		const refreshCoverageDisposable = vscode.commands.registerCommand('llt-assistant.refreshCoverage', () => {
+			console.log('[LLT Coverage] Command llt-assistant.refreshCoverage triggered');
 			coverageTreeProvider.refresh();
 		});
 		context.subscriptions.push(refreshCoverageDisposable);
