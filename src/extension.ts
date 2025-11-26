@@ -206,6 +206,49 @@ export async function activate(context: vscode.ExtensionContext) {
 	}
 	
 	console.log('[LLT Quality] Commands registered successfully');
+
+	// ===== Coverage Optimization Feature (Feature 2) =====
+	console.log('[LLT Coverage] Initializing Coverage Optimization feature...');
+	
+	try {
+		const coverageBackendClient = new CoverageBackendClient();
+		const coverageTreeProvider = new CoverageTreeDataProvider();
+		const coverageCommands = new CoverageCommands(
+			coverageTreeProvider,
+			coverageBackendClient
+		);
+		
+		// Register Coverage Analysis commands
+		const analyzeCoverageDisposable = vscode.commands.registerCommand('llt-assistant.analyzeCoverage', () => {
+			console.log('[LLT Coverage] Command llt-assistant.analyzeCoverage triggered');
+			coverageCommands.analyzeCoverage();
+		});
+		context.subscriptions.push(analyzeCoverageDisposable);
+		
+		const refreshCoverageDisposable = vscode.commands.registerCommand('llt-assistant.refreshCoverageView', () => {
+			console.log('[LLT Coverage] Command llt-assistant.refreshCoverageView triggered');
+			coverageTreeProvider.refresh();
+		});
+		context.subscriptions.push(refreshCoverageDisposable);
+		
+		const clearCoverageDisposable = vscode.commands.registerCommand('llt-assistant.clearCoverage', () => {
+			console.log('[LLT Coverage] Command llt-assistant.clearCoverage triggered');
+			coverageCommands.clearCoverage();
+		});
+		context.subscriptions.push(clearCoverageDisposable);
+		
+		// Create tree view for Coverage Explorer
+		const coverageTreeView = vscode.window.createTreeView('lltCoverageExplorer', {
+			treeDataProvider: coverageTreeProvider,
+			showCollapseAll: true
+		});
+		context.subscriptions.push(coverageTreeView);
+		
+		console.log('[LLT Coverage] Coverage Analysis commands registered successfully');
+	} catch (error) {
+		console.error('[LLT Coverage] Error initializing Coverage Analysis:', error);
+		vscode.window.showErrorMessage(`Failed to initialize Coverage Analysis: ${error instanceof Error ? error.message : String(error)}`);
+	}
 }
 
 /**
