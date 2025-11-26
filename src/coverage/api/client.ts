@@ -198,9 +198,10 @@ export class CoverageBackendClient {
 
 			// Check if task failed
 			if (status.status === 'failed') {
+				const errorMessage = status.error?.message || 'Unknown error';
 				throw new CoverageError({
 					type: 'server',
-					message: 'Task failed',
+					message: `Task failed: ${errorMessage}`,
 					detail: `Task ${taskId} failed during processing`,
 					statusCode: 0
 				});

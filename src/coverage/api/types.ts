@@ -142,6 +142,14 @@ export interface CoverageOptimizationResult {
 }
 
 /**
+ * Task error response from backend
+ */
+export interface TaskError {
+	message: string;
+	code?: string | null;
+}
+
+/**
  * Task status response for async operations
  */
 export interface TaskStatusResponse {
@@ -149,4 +157,5 @@ export interface TaskStatusResponse {
 	status: 'pending' | 'processing' | 'completed' | 'failed';
 	estimated_time_seconds?: number;
 	result?: CoverageOptimizationResult;
+	error?: TaskError | null;
 }
