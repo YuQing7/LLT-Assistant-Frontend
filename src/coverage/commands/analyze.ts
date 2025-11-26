@@ -320,7 +320,7 @@ export class CoverageCommands {
 						}
 					);
 
-					if (!finalStatus.result || !finalStatus.result.recommended_tests) {
+					if (!finalStatus.result || !finalStatus.result.recommended_tests || finalStatus.result.recommended_tests.length === 0) {
 						vscode.window.showWarningMessage('No recommended tests generated.');
 						return;
 					}
