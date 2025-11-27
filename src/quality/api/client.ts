@@ -74,23 +74,13 @@ export class QualityBackendClient extends BaseBackendClient {
 				console.log('[LLT Quality API] -------------------------------------------------------------------');
 				console.log('[LLT Quality API] Detailed Issues:');
 
-				// Check for issues with undefined/null file fields
-				const issuesWithUndefinedFile = response.issues.filter(
-					issue => !issue.file || issue.file === 'undefined'
-				);
-
-				if (issuesWithUndefinedFile.length > 0) {
-					console.error('[LLT Quality API] ⚠️  BACKEND BUG DETECTED: Found issues with undefined/null file field!');
-					console.error(`[LLT Quality API] ⚠️  ${issuesWithUndefinedFile.length} out of ${response.issues.length} issues have invalid file field`);
-				}
-
 				response.issues.forEach((issue, index) => {
 					console.log(`[LLT Quality API]   Issue #${index + 1}:`);
-					console.log(`[LLT Quality API]     file: "${issue.file}" ${!issue.file ? '❌ UNDEFINED!' : '✅'}`);
+					console.log(`[LLT Quality API]     file_path: "${issue.file_path}" ✅`);
 					console.log(`[LLT Quality API]     line: ${issue.line}`);
 					console.log(`[LLT Quality API]     column: ${issue.column}`);
 					console.log(`[LLT Quality API]     severity: ${issue.severity}`);
-					console.log(`[LLT Quality API]     type: ${issue.type}`);
+					console.log(`[LLT Quality API]     code: ${issue.code} ✅`);
 					console.log(`[LLT Quality API]     message: ${issue.message}`);
 					console.log(`[LLT Quality API]     detected_by: ${issue.detected_by}`);
 					if (issue.suggestion) {
@@ -100,13 +90,6 @@ export class QualityBackendClient extends BaseBackendClient {
 					}
 					console.log(`[LLT Quality API]     ---`);
 				});
-
-				// Final validation message
-				if (issuesWithUndefinedFile.length > 0) {
-					console.error('[LLT Quality API] ⚠️  Backend returned issues with undefined file field.');
-					console.error('[LLT Quality API] ⚠️  This is a BACKEND BUG that needs to be fixed.');
-					console.error('[LLT Quality API] ⚠️  Request files were:', request.files.map(f => f.path));
-				}
 			}
 			console.log('[LLT Quality API] ====================================================================');
 

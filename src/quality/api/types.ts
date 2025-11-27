@@ -38,8 +38,9 @@ export type IssueType =
 
 /**
  * Detection source
+ * Backend API returns "rule" or "llm", not "rule_engine"
  */
-export type DetectedBy = 'rule_engine' | 'llm';
+export type DetectedBy = 'rule' | 'llm';
 
 /**
  * Suggestion action
@@ -58,16 +59,24 @@ export interface IssueSuggestion {
 
 /**
  * Quality issue
+ *
+ * ⚠️ IMPORTANT: Backend API uses different field names than internal schema
+ * - Backend returns: file_path (not file)
+ * - Backend returns: code (not type)
+ * - Backend returns: detected_by values: "rule" or "llm" (not "rule_engine")
+ *
+ * API Contract: POST /quality/analyze response model QualityIssue
+ * Source: app/api/v1/schemas.py:367-381 (backend)
  */
 export interface QualityIssue {
-	file: string;
+	file_path: string;        // ✅ Backend field name (not "file")
 	line: number;
 	column: number;
 	severity: IssueSeverity;
-	type: IssueType;
+	code: string;             // ✅ Backend field name (not "type"), can be any rule code
 	message: string;
-	detected_by: DetectedBy;
-	suggestion: IssueSuggestion;
+	detected_by: DetectedBy;  // "rule" or "llm"
+	suggestion: IssueSuggestion | null;  // Can be null
 }
 
 /**
